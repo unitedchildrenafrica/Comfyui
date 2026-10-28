@@ -11,6 +11,10 @@ export const config = {
   get modelsDir() {
     return process.env.MODELS_DIR || "/workspace/ComfyUI/models";
   },
+  /** ComfyUI-Ausgabeordner (für ZIP-Download ganzer Ordner) */
+  get outputDir() {
+    return process.env.OUTPUT_DIR || "/workspace/ComfyUI/output";
+  },
   get civitaiToken() {
     return process.env.CIVITAI_TOKEN || "";
   },

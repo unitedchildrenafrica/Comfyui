@@ -40,8 +40,27 @@ export default function GalleryPage() {
     load();
   }, [load]);
 
-  const folders = useMemo(() => [...new Set((items ?? []).map((i) => i.folder))].sort(), [items]);
-  const shown = useMemo(() => (items ?? []).filter((i) => (kind === "all" || i.kind === kind) && (!folder || i.folder === folder)), [items, kind, folder]);
+  const [diskFolders, setDiskFolders] = useState<string[]>([]);
+  const [zipInfo, setZipInfo] = useState<{ files: number; bytes: number } | null>(null);
+  const folders = useMemo(
+    () => [...new Set([...(items ?? []).map((i) => i.folder).filter((f) => f !== "(ohne)"), ...diskFolders])].sort(),
+    [items, diskFolders],
+  );
+
+  useEffect(() => {
+    api<{ folders: string[] }>("/api/zip?list=1")
+      .then((r) => setDiskFolders(r.folders))
+      .catch(() => {});
+  }, []);
+
+  // Anzahl/Größe für den ZIP-Knopf (direkt vom Ausgabeordner, also auch alte Batches)
+  useEffect(() => {
+    setZipInfo(null);
+    api<{ files: number; bytes: number }>(`/api/zip?info=1&folder=${encodeURIComponent(folder)}`)
+      .then(setZipInfo)
+      .catch(() => {});
+  }, [folder]);
+  const shown = useMemo(() => (items ?? []).filter((i) => (kind === "all" || i.kind === kind) && (!folder || i.subfolder === folder || i.subfolder.startsWith(folder + "/"))), [items, kind, folder]);
   const current = open !== null ? shown[open] : null;
   const step = (d: number) => setOpen((o) => (o === null ? o : Math.min(shown.length - 1, Math.max(0, o + d))));
 
@@ -75,6 +94,11 @@ export default function GalleryPage() {
         onChange={setKind}
       />
       <Select value={folder} onChange={setFolder} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />
+      {zipInfo && zipInfo.files > 0 && (
+        <a className="btn btn-ghost w-full" href={`/api/zip?folder=${encodeURIComponent(folder)}`} download>
+          📦 {folder ? `Ordner „${folder}“` : "Alles"} als ZIP ({zipInfo.files} Dateien, {zipInfo.bytes >= 1e9 ? `${(zipInfo.bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(zipInfo.bytes / 1e6))} MB`})
+        </a>
+      )}
       {items && !shown.length && <p className="px-1 text-sm text-muted">Noch keine Outputs.</p>}
       <div className="grid grid-cols-3 gap-1.5">
         {shown.map((it, i) => (

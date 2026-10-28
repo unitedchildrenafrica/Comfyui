@@ -92,6 +92,10 @@ Nach einem Pod-Neustart reicht: `bash /workspace/start_comfy.sh` und `bash /work
 
 Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und speichert nach `MODELS_DIR` (Standard `/workspace/ComfyUI/models`). Vorhandene Dateien werden nicht überschrieben; abgebrochene Downloads setzen beim nächsten Versuch fort.
 
+### 6. Ganze Ordner als ZIP
+
+In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **„📦 Ordner als ZIP“**. Die App packt alle Bilder/Videos des Ordners (inkl. Unterordner) direkt aus dem ComfyUI-Ausgabeordner (`OUTPUT_DIR`, Standard `/workspace/ComfyUI/output`). Damit sind auch große Batches komplett dabei. „Alle Ordner“ lädt alles.
+
 ---
 
 ## Release / Deployment
