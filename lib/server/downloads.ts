@@ -33,6 +33,8 @@ export interface Resolved {
   versionId?: number;
   files: ResolvedFile[];
   tokenMissing?: boolean;
+  /** Hinweis für die UI, z. B. wenn die Civitai-Infos gesperrt waren */
+  notice?: string;
 }
 
 interface CivitaiVersion {
@@ -42,6 +44,51 @@ interface CivitaiVersion {
   baseModel: string;
   model?: { name: string; type: string };
   files: { id: number; name: string; type: string; sizeKB: number; primary?: boolean; downloadUrl: string }[];
+}
+
+class CivitaiApiError extends Error {
+  constructor(public status: number) {
+    super(
+      status === 451
+        ? "Civitai sperrt die Modell-Infos für den Standort des Pods (HTTP 451)."
+        : status === 404
+          ? "Civitai: Modell/Version nicht gefunden (404)."
+          : `Civitai antwortet mit HTTP ${status}.`,
+    );
+  }
+}
+
+/**
+ * Ohne Civitai-API (z. B. Region gesperrt, 451): Dateiname und Größe direkt über den
+ * Download-Link ermitteln. Civitai leitet auf den Speicher um; der Dateiname steht im
+ * Parameter b2ContentDisposition bzw. im Content-Disposition-Header.
+ */
+export async function probeDownload(rawUrl: string): Promise<{ filename: string | null; sizeBytes: number | null }> {
+  const { url, headers } = authedUrl(rawUrl);
+  const res = await fetch(url, { headers: { ...headers, range: "bytes=0-0" }, redirect: "follow", signal: AbortSignal.timeout(30_000) });
+  await res.body?.cancel().catch(() => {});
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? `Download verweigert (HTTP ${res.status}) – CIVITAI_TOKEN fehlt oder Modell braucht Login`
+        : `Download-Link antwortet mit HTTP ${res.status}`,
+    );
+  }
+  const fromHeader = (v: string | null) => {
+    if (!v) return null;
+    const star = v.match(/filename\*=UTF-8''([^;]+)/i);
+    if (star) return decodeURIComponent(star[1]);
+    return v.match(/filename="?([^";]+)"?/i)?.[1] ?? null;
+  };
+  let filename = fromHeader(res.headers.get("content-disposition"));
+  if (!filename) {
+    try {
+      filename = fromHeader(new URL(res.url).searchParams.get("b2ContentDisposition"));
+    } catch {}
+  }
+  const total = res.headers.get("content-range")?.match(/\/(\d+)$/)?.[1] ?? res.headers.get("content-length");
+  const sizeBytes = total && Number(total) > 1 ? Number(total) : null;
+  return { filename, sizeBytes };
 }
 
 async function civitaiApi<T>(host: string, pathName: string): Promise<T> {
@@ -54,7 +101,7 @@ async function civitaiApi<T>(host: string, pathName: string): Promise<T> {
     try {
       const res = await fetch(`https://${h}${pathName}`, { headers, signal: AbortSignal.timeout(20_000) });
       if (res.ok) return (await res.json()) as T;
-      last = new Error(`Civitai ${res.status}`);
+      last = new CivitaiApiError(res.status);
     } catch (err) {
       last = err;
     }
@@ -71,16 +118,49 @@ export async function resolveLink(input: string, versionOverride?: number): Prom
     let versions: { id: number; name: string }[] | undefined;
     let title = "";
     if (link.modelId) {
-      const model = await civitaiApi<{ name: string; type: string; modelVersions: { id: number; name: string }[] }>(
-        link.host,
-        `/api/v1/models/${link.modelId}`,
-      );
-      versions = model.modelVersions.map((v) => ({ id: v.id, name: v.name }));
-      versionId ??= versions[0]?.id;
-      title = model.name;
+      try {
+        const model = await civitaiApi<{ name: string; type: string; modelVersions: { id: number; name: string }[] }>(
+          link.host,
+          `/api/v1/models/${link.modelId}`,
+        );
+        versions = model.modelVersions.map((v) => ({ id: v.id, name: v.name }));
+        versionId ??= versions[0]?.id;
+        title = model.name;
+      } catch (err) {
+        // Mit modelVersionId im Link geht es über den Download-Link weiter
+        if (!versionId)
+          throw new Error(
+            `${err instanceof Error ? err.message : "Civitai-Infos nicht verfügbar."} Nimm stattdessen den Download-Link (auf Civitai beim Download-Knopf „Link kopieren“).`,
+          );
+      }
     }
     if (!versionId) throw new Error("Keine Version gefunden");
-    const v = await civitaiApi<CivitaiVersion>(link.host, `/api/v1/model-versions/${versionId}`);
+    let v: CivitaiVersion;
+    try {
+      v = await civitaiApi<CivitaiVersion>(link.host, `/api/v1/model-versions/${versionId}`);
+    } catch (err) {
+      // Info-Schnittstelle gesperrt/kaputt → direkt über den Download-Link weitermachen
+      const dlUrl = `https://${link.host}/api/download/models/${versionId}${link.fileId ? `?fileId=${link.fileId}` : ""}`;
+      const probe = await probeDownload(dlUrl);
+      const filename = probe.filename ? (sanitizeModelFilename(probe.filename) ?? probe.filename) : `civitai_${versionId}.safetensors`;
+      return {
+        source: "civitai",
+        title: probe.filename ?? `Civitai ${versionId}`,
+        versionId,
+        tokenMissing: !config.civitaiToken,
+        notice: `${err instanceof Error ? err.message : "Civitai-Infos nicht verfügbar."} Dateiname und Größe kommen direkt vom Download – bitte den Ordner selbst wählen.`,
+        files: [
+          {
+            url: dlUrl,
+            filename,
+            sizeBytes: probe.sizeBytes,
+            type: guessTypeFromPath(filename),
+            label: "Civitai-Download",
+            primary: true,
+          },
+        ],
+      };
+    }
     const modelType = v.model?.type ?? "Checkpoint";
     let files = v.files;
     if (link.fileId && !versionOverride) files = files.filter((f) => f.id === link.fileId);

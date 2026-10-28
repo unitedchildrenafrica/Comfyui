@@ -120,6 +120,7 @@ export default function ModelsPage() {
             <p className="font-semibold">{resolved.title}</p>
             {resolved.baseModel && <p className="text-xs text-muted">Basis: {resolved.baseModel}</p>}
           </div>
+          {resolved.notice && <WarnBox>{resolved.notice}</WarnBox>}
           {resolved.tokenMissing && (
             <WarnBox>{resolved.source === "civitai" ? "CIVITAI_TOKEN" : "HF_TOKEN"} ist in der App nicht gesetzt – manche Modelle lassen sich dann nicht laden.</WarnBox>
           )}
