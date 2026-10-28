@@ -41,7 +41,7 @@ export function defaultImageSettings(generator: ImageGenerator): ImageSettings {
   if (generator === "pony") {
     return {
       ...base,
-      checkpoint: "",
+      checkpoint: "ponyDiffusionV6XL.safetensors",
       steps: 25,
       cfg: 7,
       positive: "score_9, score_8_up, score_7_up, ",
@@ -91,6 +91,8 @@ export function builtinPresets(): Record<string, ImageSettings> {
   return {
     "WAI v10": { ...defaultImageSettings("wai"), checkpoint: "wai_illustrious_v10.safetensors" },
     "WAI v17": { ...defaultImageSettings("wai"), checkpoint: "wai_illustrious_v17.safetensors" },
+    "Nova 3DCG": { ...defaultImageSettings("wai"), checkpoint: "nova3DCGXL_ilV90.safetensors" },
     Pony: defaultImageSettings("pony"),
+    "Aniverse Pony": { ...defaultImageSettings("pony"), checkpoint: "aniversePonyXL_v40.safetensors" },
   };
 }
