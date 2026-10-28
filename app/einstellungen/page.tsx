@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ComfyDown, ErrorBox, Field } from "@/components/ui";
 import { api, ApiError } from "@/lib/client";
@@ -103,6 +104,10 @@ export default function SettingsPage() {
           </button>
         </section>
       )}
+
+      <Link href="/modelle" className="btn btn-primary w-full">
+        + Checkpoint / LoRA per Link laden
+      </Link>
 
       {app && (
         <section className="card space-y-3 p-4">

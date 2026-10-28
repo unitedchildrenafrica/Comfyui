@@ -13,6 +13,8 @@
 #   WAIT_FOR_COMFY      optional, Sekunden warten auf ComfyUI vor dem Tunnel-Start (Standard 600, 0 = sofort)
 #   DATA_DIR            optional, Standard: /workspace/pod-frontend-data
 #   PUBLIC_URL          optional, Standard: https://comfy.comfyusel.uk
+#   MODELS_DIR          optional, Standard: /workspace/ComfyUI/models („Modelle laden“ in der App)
+#   CIVITAI_TOKEN, HF_TOKEN  optional – damit die App Modelle per Link laden kann
 set -euo pipefail
 
 GH_REPO="${GH_REPO:-unitedchildrenafrica/Comfyui}"
@@ -23,6 +25,9 @@ COMFY_URL="${COMFY_URL:-http://127.0.0.1:18188}"
 WAIT_FOR_COMFY="${WAIT_FOR_COMFY:-600}"
 PUBLIC_URL="${PUBLIC_URL:-https://comfy.comfyusel.uk}"
 PORT="${PORT:-3000}"
+MODELS_DIR="${MODELS_DIR:-/workspace/ComfyUI/models}"
+CIVITAI_TOKEN="${CIVITAI_TOKEN:-}"
+HF_TOKEN="${HF_TOKEN:-}"
 RUN_DIR="/tmp/pod-frontend"
 
 mkdir -p "$LOG_DIR" "$DATA_DIR" "$RUN_DIR"
@@ -115,7 +120,7 @@ pkill -f "node $APP_DIR/server.js" 2>/dev/null || true
 log "Starte App auf 127.0.0.1:$PORT …"
 (
   # Nur lokal lauschen – von außen ist die App ausschließlich über den Tunnel erreichbar
-  export APP_PASSWORD SESSION_SECRET COMFY_URL DATA_DIR PORT HOSTNAME=127.0.0.1 NODE_ENV=production
+  export APP_PASSWORD SESSION_SECRET COMFY_URL DATA_DIR MODELS_DIR CIVITAI_TOKEN HF_TOKEN PORT HOSTNAME=127.0.0.1 NODE_ENV=production
   cd "$APP_DIR"
   while true; do
     echo "[$(date)] start" >> "$LOG_DIR/frontend.log"

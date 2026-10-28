@@ -18,7 +18,7 @@ export function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 backdrop-blur" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <ul className="mx-auto flex max-w-2xl">
         {TABS.map((t) => {
-          const active = path.startsWith(t.href);
+          const active = path.startsWith(t.href) || (t.href === "/einstellungen" && path.startsWith("/modelle"));
           return (
             <li key={t.href} className="flex-1">
               <Link href={t.href} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs ${active ? "text-accent" : "text-muted"}`}>

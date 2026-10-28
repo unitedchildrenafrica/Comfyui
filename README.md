@@ -82,6 +82,16 @@ Nach einem Pod-Neustart reicht: `bash /workspace/start_comfy.sh` und `bash /work
 
 `pod/start-frontend.sh` installiert bei Bedarf Node 22 und cloudflared, lädt das neueste Release nach `/opt/pod-frontend`, startet die App mit Neustart-Schleife auf `127.0.0.1:3000` und dann den Tunnel. Logs: `/workspace/logs/start-frontend.log`, `frontend.log`, `tunnel.log`, ComfyUI: `/workspace/comfy.log`.
 
+### 5. Modelle per Link laden (in der App)
+
+**Setup → „Checkpoint / LoRA per Link laden“** (oder der Link unter jeder LoRA-Liste): Link einfügen → **Link prüfen** → Zielordner und Dateiname kontrollieren → **Herunterladen**. Der Download läuft auf dem Pod weiter, auch wenn das Handy gesperrt ist. Fertige Dateien stehen sofort in den Auswahllisten.
+
+- **Civitai:** Modellseite (`civitai.red/models/…`, Version wählbar) oder Download-Link (`/api/download/models/…`). Typ und Ordner werden erkannt (Checkpoint, LoRA, Anima → `diffusion_models`, Text-Encoder, VAE).
+- **Hugging Face:** Datei-Link (`…/blob/…` oder `…/resolve/…`).
+- **Direkter Link** zu einer `.safetensors`/`.pth`-Datei.
+
+Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und speichert nach `MODELS_DIR` (Standard `/workspace/ComfyUI/models`). Vorhandene Dateien werden nicht überschrieben; abgebrochene Downloads setzen beim nächsten Versuch fort.
+
 ---
 
 ## Release / Deployment

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { LoraEntry } from "@/lib/types";
 import { Select, Slider } from "./ui";
 
@@ -30,6 +31,9 @@ export function LoraList({ loras, onChange, available, max }: { loras: LoraEntry
       >
         + LoRA hinzufügen{max ? ` (${loras.length}/${max})` : ""}
       </button>
+      <Link href="/modelle" className="block text-center text-xs text-accent underline">
+        Neue LoRA per Link herunterladen
+      </Link>
     </div>
   );
 }
