@@ -51,7 +51,7 @@ Am Ende des bestehenden Pod-Setup-Skripts:
 ```bash
 curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
   -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/start-frontend.sh?ref=main \
+  https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/start-frontend.sh \
   -o /workspace/start-frontend.sh && bash /workspace/start-frontend.sh
 ```
 
