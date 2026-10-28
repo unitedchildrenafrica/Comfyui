@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b0d12;
+  --card: #151922;
+  --line: #262c38;
+  --text: #e8ebf1;
+  --soft: #c3c9d4;
+  --muted: #8a93a3;
+  --accent: #7c5cff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-soft: var(--soft);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+}
+
+html {
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-card;
+  }
+  .input {
+    /* 16px verhindert das Auto-Zoomen von iOS Safari */
+    @apply min-h-11 w-full rounded-xl border border-line bg-bg px-3 py-2 text-base text-text outline-none focus:border-accent disabled:opacity-50;
+  }
+  textarea.input {
+    @apply leading-snug;
+  }
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 font-medium transition active:scale-[0.98] disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply bg-accent text-white;
+  }
+  .btn-ghost {
+    @apply border border-line bg-bg text-soft;
+  }
+  .btn-danger {
+    @apply border border-red-500/50 bg-red-500/10 text-red-200;
+  }
+  .range {
+    accent-color: var(--accent);
+    height: 2.75rem;
+  }
+}
+
+.page {
+  @apply mx-auto max-w-2xl space-y-3 px-3 pt-3;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  /* Platz für Tab-Leiste + festen Generieren-Knopf */
+  padding-bottom: calc(9rem + env(safe-area-inset-bottom));
+}
+
+.sticky-action {
+  @apply fixed inset-x-0 z-30 mx-auto max-w-2xl px-3;
+  bottom: calc(3.75rem + env(safe-area-inset-bottom));
+}

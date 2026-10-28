@@ -1,0 +1,294 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "wai_illustrious_v10.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint (WAI v10 / v17)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "UNKNOWN": "prompts.txt",
+      "UNKNOWN_1": false,
+      "UNKNOWN_2": 20,
+      "UNKNOWN_3": 0,
+      "text_data_opt": [
+        "30",
+        0
+      ],
+      "start_index": [
+        "31",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompts (Block à 20)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "zipped_prompt": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt aufteilen"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "clip": [
+        "70",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": [
+        "3",
+        1
+      ],
+      "clip": [
+        "70",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative"
+    }
+  },
+  "6": {
+    "inputs": {
+      "width": 768,
+      "height": 1152,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Basis 768x1152"
+    }
+  },
+  "7": {
+    "inputs": {
+      "seed": 0,
+      "steps": 15,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Pass 1"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode 1"
+    }
+  },
+  "11": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 1152,
+      "height": 1728,
+      "crop": "disabled",
+      "image": [
+        "40",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "auf 1152x1728"
+    }
+  },
+  "12": {
+    "inputs": {
+      "pixels": [
+        "11",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "Encode"
+    }
+  },
+  "13": {
+    "inputs": {
+      "seed": 0,
+      "steps": 15,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.35,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "Hires Pass"
+    }
+  },
+  "14": {
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode 2"
+    }
+  },
+  "15": {
+    "inputs": {
+      "filename_prefix": [
+        "50",
+        0
+      ],
+      "images": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "30": {
+    "inputs": {
+      "value": "positive: 1girl, solo, silver hair, blue eyes, portrait, smile, soft lighting, masterpiece, best quality\nnegative: lowres, bad anatomy, bad hands, watermark, text\nname: bild_001\n---\npositive: 1girl, solo, red hair, green eyes, upper body, cowboy shot, window light, masterpiece, best quality\nnegative: lowres, bad anatomy, bad hands, watermark, text\nname: bild_002"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "PROMPTS HIER EINFÜGEN"
+    }
+  },
+  "31": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "START INDEX: 0, 20, 40 ... (vor jedem Run ändern)"
+    }
+  },
+  "40": {
+    "inputs": {
+      "upscale_model": [
+        "41",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Remacri 4x"
+    }
+  },
+  "41": {
+    "inputs": {
+      "model_name": "4x_foolhardy_Remacri.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Upscaler (wie TensorHub)"
+    }
+  },
+  "50": {
+    "inputs": {
+      "string_a": "wai",
+      "string_b": [
+        "3",
+        2
+      ],
+      "delimiter": "/"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "ORDNER (string_a) + Name aus Prompt"
+    }
+  },
+  "70": {
+    "inputs": {
+      "stop_at_clip_layer": -2,
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPSetLastLayer",
+    "_meta": {
+      "title": "Clip Skip (-2 = 2, -1 = 1, wie TensorHub)"
+    }
+  }
+}

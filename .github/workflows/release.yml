@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Standalone-Paket schnüren
+        run: |
+          set -e
+          OUT=release
+          rm -rf $OUT && mkdir -p $OUT
+          cp -r .next/standalone/. $OUT/
+          mkdir -p $OUT/.next
+          cp -r .next/static $OUT/.next/static
+          cp -r public $OUT/public
+          tar -czf pod-frontend.tar.gz -C $OUT .
+          ls -lh pod-frontend.tar.gz
+
+      - name: Release "latest" ersetzen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest pod-frontend.tar.gz \
+            --title "latest ($(git rev-parse --short HEAD))" \
+            --notes "Automatischer Build von ${GITHUB_SHA}" \
+            --target "${GITHUB_SHA}" \
+            --latest
