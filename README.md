@@ -38,34 +38,49 @@ Das ist `GH_TOKEN`.
 |---|---|---|
 | `APP_PASSWORD` | ja | Login-Passwort der App |
 | `CIVITAI_TOKEN` | ja | Civitai-API-Token für die Modell-Downloads |
+| `HF_TOKEN` | für `video` | Hugging-Face-Token für die H3-Modelle |
 | `GH_TOKEN` | ja (privates Repo) | Read-only-Token aus Schritt 2 |
 | `CF_TUNNEL_TOKEN` | empfohlen | Tunnel-Token aus Schritt 1. Fehlt er, startet ein Quick Tunnel mit zufälliger `trycloudflare.com`-Adresse |
 | `DISCORD_WEBHOOK_URL` | nein | Schickt „Pod bereit: …“ plus GPU-Name, sobald alles läuft (beim Quick Tunnel mit der zufälligen Adresse) |
 | `SESSION_SECRET` | nein | Signiert das Login-Cookie. Ohne Angabe wird einer erzeugt und in `DATA_DIR` gespeichert |
-| `COMFY_URL` | nein | Standard `http://127.0.0.1:8188` |
+| `COMFY_URL` | nein | Standard im Pod-Skript `http://127.0.0.1:18188` |
 | `DATA_DIR` | nein | Standard `/workspace/pod-frontend-data` (Presets, Job-Einstellungen) |
 
 ### 4. Setup-Skript für jeden neuen Pod
 
-`pod/setup-pod.sh` ist das eine Skript für jeden neuen Pod. Es
-1. startet im Hintergrund `pod/start-frontend.sh` (App + Tunnel, siehe unten), damit die App nach ca. 1 Minute erreichbar ist,
-2. lädt parallel dazu alle Checkpoints (WAI v10/v17, Pony V6, Nova 3DCG, Aniverse Pony), die Anima-Modelle (UNet, Text-Encoder, VAE) und die LoRAs nach `/workspace/ComfyUI/models`.
+`pod/setup.sh` richtet einen frischen Vast-Pod (ComfyUI-Template) komplett ein. Es gibt drei Modi:
 
-Vorhandene Dateien werden übersprungen, abgebrochene Downloads fortgesetzt. Schlägt etwas fehl, einfach nochmal starten. Mit `DISCORD_WEBHOOK_URL` kommt am Ende „Alle Modelle geladen ✓“.
+| Modus | Inhalt |
+|---|---|
+| `bilder` | Inspire Pack, WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Remacri, Bild-LoRAs |
+| `video` | MiniMax H3 Singularity: ComfyUI-Update, Custom Nodes (DaSiWa, KJNodes, VHS …), DiT, Text-Encoder, VAEs, TAE, RIFE, H3-LoRAs, x264-Patch |
+| `alles` | beides |
 
-Zusätzliche Umgebungsvariable im Pod-Template: **`CIVITAI_TOKEN`** (dein Civitai-API-Token; steht bewusst nicht im Repo).
+In jedem Modus startet es außerdem sofort im Hintergrund das Pod-Frontend und den Tunnel (`pod/start-frontend.sh`), schreibt `/workspace/start_comfy.sh` und startet ComfyUI auf Port **18188**. Am Ende prüft es die Nodes und meldet Probleme (optional per Discord). Vorhandene Dateien werden übersprungen, also bei Fehlern einfach nochmal starten.
 
-Als On-Start-Skript im Pod-Template bzw. am Ende des bestehenden Setup-Skripts:
+**Nur Bilder:**
 
 ```bash
-curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/setup-pod.sh \
-  -o /workspace/setup-pod.sh && bash /workspace/setup-pod.sh
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/setup.sh?ref=main" -o /workspace/setup.sh && bash /workspace/setup.sh bilder
 ```
 
-Nur Modelle laden ohne Frontend: `SKIP_FRONTEND=1 bash /workspace/setup-pod.sh`. Andere ComfyUI-Stelle: `COMFY_DIR=/pfad/zu/ComfyUI`.
+**Nur MiniMax H3:**
 
-`pod/start-frontend.sh` (wird von `setup-pod.sh` aufgerufen) installiert bei Bedarf Node 22 und cloudflared, lädt das neueste Release nach `/opt/pod-frontend`, startet die App mit einer Neustart-Schleife auf `127.0.0.1:3000`, wartet auf ComfyUI und startet dann den Tunnel. Logs: `/workspace/logs/frontend.log`, `/workspace/logs/tunnel.log`, `/workspace/logs/start-frontend.log`. Mehrfach ausführen ist ok.
+```bash
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/setup.sh?ref=main" -o /workspace/setup.sh && bash /workspace/setup.sh video
+```
+
+**Alles:**
+
+```bash
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/pod/setup.sh?ref=main" -o /workspace/setup.sh && bash /workspace/setup.sh alles
+```
+
+Optionen: `WITH_QWEN=1` (baut llama-cpp-python für den Qwen-Prompt-Schreiber), `SKIP_FRONTEND=1` (ohne App/Tunnel).
+
+Nach einem Pod-Neustart reicht: `bash /workspace/start_comfy.sh` und `bash /workspace/start-frontend.sh`.
+
+`pod/start-frontend.sh` installiert bei Bedarf Node 22 und cloudflared, lädt das neueste Release nach `/opt/pod-frontend`, startet die App mit Neustart-Schleife auf `127.0.0.1:3000` und dann den Tunnel. Logs: `/workspace/logs/start-frontend.log`, `frontend.log`, `tunnel.log`, ComfyUI: `/workspace/comfy.log`.
 
 ---
 
@@ -73,7 +88,7 @@ Nur Modelle laden ohne Frontend: `SKIP_FRONTEND=1 bash /workspace/setup-pod.sh`.
 
 Jeder Push auf `main` startet `.github/workflows/release.yml`: Typecheck, Tests, `next build` (standalone) → `pod-frontend.tar.gz` im Release **`latest`** (wird jedes Mal ersetzt). Manuell starten geht über **Actions → Release → Run workflow**. Auf dem Pod wird nichts gebaut.
 
-App auf einem laufenden Pod aktualisieren: `SKIP_FRONTEND=0 bash /workspace/setup-pod.sh` erneut ausführen (Modelle werden dabei übersprungen) oder nur `bash /workspace/start-frontend.sh`.
+App auf einem laufenden Pod aktualisieren: `bash /workspace/start-frontend.sh` erneut ausführen.
 
 ---
 

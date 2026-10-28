@@ -9,7 +9,8 @@
 #   SESSION_SECRET      optional – sonst wird einer erzeugt und in DATA_DIR gespeichert
 #   DISCORD_WEBHOOK_URL optional – Nachricht, sobald der Pod bereit ist
 #   GH_REPO             optional, Standard: unitedchildrenafrica/Comfyui
-#   COMFY_URL           optional, Standard: http://127.0.0.1:8188
+#   COMFY_URL           optional, Standard: http://127.0.0.1:18188 (Port aus setup.sh)
+#   WAIT_FOR_COMFY      optional, Sekunden warten auf ComfyUI vor dem Tunnel-Start (Standard 600, 0 = sofort)
 #   DATA_DIR            optional, Standard: /workspace/pod-frontend-data
 #   PUBLIC_URL          optional, Standard: https://comfy.comfyusel.uk
 set -euo pipefail
@@ -18,7 +19,8 @@ GH_REPO="${GH_REPO:-unitedchildrenafrica/Comfyui}"
 APP_DIR="${APP_DIR:-/opt/pod-frontend}"
 LOG_DIR="${LOG_DIR:-/workspace/logs}"
 DATA_DIR="${DATA_DIR:-/workspace/pod-frontend-data}"
-COMFY_URL="${COMFY_URL:-http://127.0.0.1:8188}"
+COMFY_URL="${COMFY_URL:-http://127.0.0.1:18188}"
+WAIT_FOR_COMFY="${WAIT_FOR_COMFY:-600}"
 PUBLIC_URL="${PUBLIC_URL:-https://comfy.comfyusel.uk}"
 PORT="${PORT:-3000}"
 RUN_DIR="/tmp/pod-frontend"
@@ -126,12 +128,17 @@ echo $! > "$RUN_DIR/frontend.pid"
 disown || true
 
 # --- 5. Auf ComfyUI warten --------------------------------------------------------
-log "Warte auf ComfyUI ($COMFY_URL) …"
-for i in $(seq 1 300); do
-  if curl -fs -o /dev/null "$COMFY_URL/system_stats"; then log "ComfyUI antwortet."; break; fi
-  [ "$i" = 300 ] && log "ComfyUI antwortet noch nicht – Tunnel startet trotzdem (App zeigt 'ComfyUI antwortet nicht')."
-  sleep 2
-done
+if [ "$WAIT_FOR_COMFY" -gt 0 ]; then
+  log "Warte auf ComfyUI ($COMFY_URL) …"
+  END=$(( $(date +%s) + WAIT_FOR_COMFY ))
+  until curl -fs -o /dev/null "$COMFY_URL/system_stats"; do
+    if [ "$(date +%s)" -ge "$END" ]; then
+      log "ComfyUI antwortet noch nicht – Tunnel startet trotzdem (App zeigt 'ComfyUI antwortet nicht')."
+      break
+    fi
+    sleep 2
+  done
+fi
 
 # --- 6. Cloudflare Tunnel --------------------------------------------------------
 stop_pid tunnel
