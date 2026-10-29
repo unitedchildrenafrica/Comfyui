@@ -52,7 +52,7 @@ if [ "${SKIP_FRONTEND:-0}" != 1 ]; then
   START="$HERE/start-frontend.sh"
   if [ ! -f "$START" ]; then
     START=/workspace/start-frontend.sh
-    curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
       "https://api.github.com/repos/$GH_REPO/contents/pod/start-frontend.sh?ref=$GH_REF" -o "$START" ||
       FAIL+=("start-frontend.sh laden")
   fi

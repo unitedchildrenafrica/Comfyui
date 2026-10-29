@@ -34,6 +34,8 @@ RUN_DIR="/tmp/pod-frontend"
 
 mkdir -p "$LOG_DIR" "$DATA_DIR" "$RUN_DIR"
 log() { echo "[pod-frontend] $(date '+%H:%M:%S') $*"; }
+# Pod-Leitungen wackeln manchmal (Connection reset) → Netzwerk-Aufrufe automatisch wiederholen
+CURL_NET=(--retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20)
 
 if [ -z "${APP_PASSWORD:-}" ]; then
   log "FEHLER: APP_PASSWORD ist nicht gesetzt – ohne Passwort startet die App nicht."
@@ -54,9 +56,9 @@ node_major() { node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || echo 0; }
 if ! command -v node >/dev/null || [ "$(node_major)" -lt 22 ]; then
   log "Installiere Node.js 22 …"
   ARCH=$(uname -m); case "$ARCH" in x86_64) NARCH=x64 ;; aarch64) NARCH=arm64 ;; *) NARCH=$ARCH ;; esac
-  NODE_VER=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep -oE "node-v22\.[0-9]+\.[0-9]+-linux-${NARCH}\.tar\.xz" | head -1)
+  NODE_VER=$(curl -fsSL "${CURL_NET[@]}" https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | grep -oE "node-v22\.[0-9]+\.[0-9]+-linux-${NARCH}\.tar\.xz" | head -1)
   command -v xz >/dev/null || apt_install xz-utils
-  curl -fsSL "https://nodejs.org/dist/latest-v22.x/${NODE_VER}" | tar -xJ -C /usr/local --strip-components=1
+  curl -fsSL "${CURL_NET[@]}" "https://nodejs.org/dist/latest-v22.x/${NODE_VER}" | tar -xJ -C /usr/local --strip-components=1
 fi
 log "Node $(node -v)"
 
@@ -64,23 +66,24 @@ log "Node $(node -v)"
 if ! command -v cloudflared >/dev/null; then
   log "Installiere cloudflared …"
   ARCH=$(uname -m); case "$ARCH" in x86_64) CARCH=amd64 ;; aarch64) CARCH=arm64 ;; *) CARCH=$ARCH ;; esac
-  curl -fsSL -o /usr/local/bin/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CARCH}"
+  curl -fsSL "${CURL_NET[@]}" -o /usr/local/bin/cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CARCH}"
   chmod +x /usr/local/bin/cloudflared
 fi
 
 # --- 3. Neuestes Release herunterladen -------------------------------------------
 download_release() {
+  local ipflag="${1:-}"
   local auth=()
   [ -n "${GH_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GH_TOKEN}")
   local api="https://api.github.com/repos/${GH_REPO}/releases/tags/latest"
   local asset_url
-  asset_url=$(curl -fsSL "${auth[@]}" -H "Accept: application/vnd.github+json" "$api" |
+  asset_url=$(curl -fsSL $ipflag "${CURL_NET[@]}" "${auth[@]}" -H "Accept: application/vnd.github+json" "$api" |
     grep -oE '"url": *"https://api.github.com/repos/[^"]+/releases/assets/[0-9]+"' | head -1 | sed -E 's/.*"(https[^"]+)"/\1/')
   if [ -z "$asset_url" ]; then
-    log "FEHLER: Kein Release 'latest' gefunden (GH_TOKEN gesetzt? Action schon gelaufen?)"
+    log "Release nicht erreichbar – Netzwerk zu GitHub gestört oder GH_TOKEN fehlt/ungültig"
     return 1
   fi
-  curl -fsSL "${auth[@]}" -H "Accept: application/octet-stream" -o "$RUN_DIR/pod-frontend.tar.gz" "$asset_url"
+  curl -fsSL $ipflag "${CURL_NET[@]}" "${auth[@]}" -H "Accept: application/octet-stream" -o "$RUN_DIR/pod-frontend.tar.gz" "$asset_url" || return 1
   rm -rf "${APP_DIR}.new"
   mkdir -p "${APP_DIR}.new"
   tar -xzf "$RUN_DIR/pod-frontend.tar.gz" -C "${APP_DIR}.new"
@@ -90,7 +93,8 @@ download_release() {
   rm -rf "${APP_DIR}.old"
 }
 log "Lade Release von ${GH_REPO} …"
-if ! download_release; then
+# Zweiter Versuch nur über IPv4 – bei Vast hakt manchmal die IPv6-Route zu GitHub
+if ! download_release && ! { log "Nochmal über IPv4 …"; download_release -4; }; then
   [ -f "$APP_DIR/server.js" ] && log "Nutze vorhandene Version in $APP_DIR" || exit 1
 fi
 
