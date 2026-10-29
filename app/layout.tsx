@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { AlarmHost } from "@/components/Alarm";
 import { BottomNav } from "@/components/BottomNav";
 import "./globals.css";
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <BottomNav />
+        <AlarmHost />
       </body>
     </html>
   );

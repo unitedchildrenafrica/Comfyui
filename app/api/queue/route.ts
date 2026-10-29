@@ -28,6 +28,8 @@ export async function GET() {
       promptId: h.promptId,
       label: jobs[h.promptId]?.label ?? h.files[0]?.filename ?? "Job",
       generator: jobs[h.promptId]?.generator ?? null,
+      // für die Wecker-Glocke: auch Videos aus der ComfyUI-Oberfläche erkennen
+      kind: jobs[h.promptId]?.kind ?? (h.files.some((f) => f.kind === "video") ? "video" : "image"),
       status: h.status,
       durationMs: h.durationMs ?? getLiveState().durations[h.promptId] ?? null,
       timestamp: h.timestamp,

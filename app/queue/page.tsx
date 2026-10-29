@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { BellToggle } from "@/components/Alarm";
 import { LiveProgress } from "@/components/LiveProgress";
 import { LivePreview } from "@/components/LivePreview";
 import { ComfyDown, ErrorBox } from "@/components/ui";
@@ -69,7 +70,10 @@ export default function QueuePage() {
 
   return (
     <main className="page">
-      <h1 className="px-1 text-lg font-semibold">Warteschlange</h1>
+      <div className="flex items-center justify-between px-1">
+        <h1 className="text-lg font-semibold">Warteschlange</h1>
+        <BellToggle />
+      </div>
       {error && (error.comfyDown ? <ComfyDown onRetry={load} /> : <ErrorBox>{error.message}</ErrorBox>)}
       {msg && <p className="px-1 text-sm text-muted">{msg}</p>}
 

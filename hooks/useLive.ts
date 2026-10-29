@@ -29,13 +29,14 @@ export interface FinishedEvent {
 }
 
 /** Live-Fortschritt per SSE (/api/events). Verbindet sich bei Abbruch selbst neu. */
-export function useLive(onFinished?: (e: FinishedEvent) => void) {
+export function useLive(onFinished?: (e: FinishedEvent) => void, enabled = true) {
   const [state, setState] = useState<LiveSnapshot | null>(null);
   const [sseOk, setSseOk] = useState(false);
   const cb = useRef(onFinished);
   cb.current = onFinished;
 
   useEffect(() => {
+    if (!enabled) return;
     let es: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
@@ -69,7 +70,7 @@ export function useLive(onFinished?: (e: FinishedEvent) => void) {
       if (retry) clearTimeout(retry);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [enabled]);
 
   return { state, sseOk };
 }

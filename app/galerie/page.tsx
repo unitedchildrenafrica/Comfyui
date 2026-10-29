@@ -25,7 +25,8 @@ export default function GalleryPage() {
   const router = useRouter();
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [kind, setKind] = useState<"all" | "image" | "video">("all");
+  const [kind, setKind] = useState<"all" | "image" | "video" | "fav">("all");
+  const [favs, setFavs] = useState<Item[]>([]);
   const [folder, setFolder] = useState("");
   const [open, setOpen] = useState<number | null>(null);
   const [canDelete, setCanDelete] = useState(false);
@@ -44,7 +45,27 @@ export default function GalleryPage() {
   }, []);
   useEffect(() => {
     load();
+    api<{ items: Item[] }>("/api/favorites")
+      .then((r) => setFavs(r.items))
+      .catch(() => {});
   }, [load]);
+
+  // --- Favoriten: geordnete Liste, wird komplett auf dem Pod gespeichert ---------------
+  const keyOf = (f: { filename: string; subfolder: string }) => `${f.subfolder}/${f.filename}`;
+  const favKeys = useMemo(() => new Set(favs.map(keyOf)), [favs]);
+  const saveFavs = (next: Item[]) => {
+    setFavs(next);
+    api("/api/favorites", { method: "PUT", json: { items: next } }).catch(() => {});
+  };
+  const toggleFav = (it: Item) =>
+    saveFavs(favKeys.has(keyOf(it)) ? favs.filter((f) => keyOf(f) !== keyOf(it)) : [it, ...favs]);
+  const moveFav = (index: number, dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= favs.length) return;
+    const next = [...favs];
+    [next[index], next[j]] = [next[j], next[index]];
+    saveFavs(next);
+  };
 
   const [diskFolders, setDiskFolders] = useState<string[]>([]);
   const [zipInfo, setZipInfo] = useState<{ files: number; bytes: number } | null>(null);
@@ -66,7 +87,13 @@ export default function GalleryPage() {
       .then(setZipInfo)
       .catch(() => {});
   }, [folder]);
-  const shown = useMemo(() => (items ?? []).filter((i) => (kind === "all" || i.kind === kind) && (!folder || i.subfolder === folder || i.subfolder.startsWith(folder + "/"))), [items, kind, folder]);
+  const shown = useMemo(
+    () =>
+      kind === "fav"
+        ? favs
+        : (items ?? []).filter((i) => (kind === "all" || i.kind === kind) && (!folder || i.subfolder === folder || i.subfolder.startsWith(folder + "/"))),
+    [items, kind, folder, favs],
+  );
   const current = open !== null ? shown[open] : null;
   const step = (d: number) => setOpen((o) => (o === null ? o : Math.min(shown.length - 1, Math.max(0, o + d))));
 
@@ -96,19 +123,30 @@ export default function GalleryPage() {
           { value: "all", label: "Alle" },
           { value: "image", label: "Bilder" },
           { value: "video", label: "Videos" },
+          { value: "fav", label: `⭐ ${favs.length || ""}`.trim() },
         ]}
-        onChange={setKind}
+        onChange={(v) => {
+          setKind(v);
+          setOpen(null);
+        }}
       />
-      <Select value={folder} onChange={setFolder} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />
-      {zipInfo && zipInfo.files > 0 && (
+      {kind !== "fav" && <Select value={folder} onChange={setFolder} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />}
+      {kind === "fav" && (
+        <p className="px-1 text-xs text-muted">
+          {favs.length ? "Mit ◀ ▶ die Reihenfolge ändern. Im Vollbild mit ⭐ hinzufügen oder entfernen." : "Noch keine Favoriten – im Vollbild auf ☆ tippen."}
+        </p>
+      )}
+      {kind !== "fav" && zipInfo && zipInfo.files > 0 && (
         <a className="btn btn-ghost w-full" href={`/api/zip?folder=${encodeURIComponent(folder)}`} download>
           📦 {folder ? `Ordner „${folder}“` : "Alles"} als ZIP ({zipInfo.files} Dateien, {zipInfo.bytes >= 1e9 ? `${(zipInfo.bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(zipInfo.bytes / 1e6))} MB`})
         </a>
       )}
-      {items && !shown.length && <p className="px-1 text-sm text-muted">Noch keine Outputs.</p>}
+      {items && kind !== "fav" && !shown.length && <p className="px-1 text-sm text-muted">Noch keine Outputs.</p>}
       <div className="grid grid-cols-3 gap-1.5">
         {shown.map((it, i) => (
-          <button key={it.promptId + it.subfolder + it.filename} type="button" className="relative aspect-square overflow-hidden rounded-lg bg-card" onClick={() => setOpen(i)}>
+          <div key={it.promptId + it.subfolder + it.filename} className="overflow-hidden rounded-lg bg-card">
+          <button type="button" className="relative block aspect-square w-full overflow-hidden" onClick={() => setOpen(i)}>
+            {favKeys.has(keyOf(it)) && kind !== "fav" && <span className="absolute left-1 top-1 z-10 text-sm drop-shadow">⭐</span>}
             {it.kind === "video" ? (
               <>
                 <video src={viewUrl(it) + "#t=0.1"} muted playsInline preload="metadata" className="h-full w-full object-cover" />
@@ -119,6 +157,18 @@ export default function GalleryPage() {
               <img src={viewUrl(it, { preview: "webp;60" })} alt={it.label} loading="lazy" className="h-full w-full object-cover" />
             )}
           </button>
+          {kind === "fav" && (
+            <div className="flex items-center justify-between bg-black/60 text-sm">
+              <button type="button" className="px-3 py-2 disabled:opacity-30" disabled={i === 0} onClick={() => moveFav(i, -1)} aria-label="nach vorne">
+                ◀
+              </button>
+              <span className="text-xs text-muted">{i + 1}</span>
+              <button type="button" className="px-3 py-2 disabled:opacity-30" disabled={i === shown.length - 1} onClick={() => moveFav(i, 1)} aria-label="nach hinten">
+                ▶
+              </button>
+            </div>
+          )}
+          </div>
         ))}
       </div>
 
@@ -140,9 +190,19 @@ export default function GalleryPage() {
               {current.seed !== null && <span className="text-muted"> · Seed {current.seed}</span>}
               {current.durationMs !== null && <span className="text-muted"> · ⏱ {formatDuration(current.durationMs)}</span>}
             </span>
-            <button type="button" className="btn btn-ghost px-3" onClick={() => setOpen(null)} aria-label="Schließen">
-              ✕
-            </button>
+            <span className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                className={`btn px-3 ${favKeys.has(keyOf(current)) ? "border border-amber-400/60 bg-amber-400/15" : "btn-ghost"}`}
+                onClick={() => toggleFav(current)}
+                aria-label={favKeys.has(keyOf(current)) ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+              >
+                {favKeys.has(keyOf(current)) ? "⭐" : "☆"}
+              </button>
+              <button type="button" className="btn btn-ghost px-3" onClick={() => setOpen(null)} aria-label="Schließen">
+                ✕
+              </button>
+            </span>
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center">
             {current.kind === "video" ? (
@@ -166,6 +226,7 @@ export default function GalleryPage() {
                     await api(`/api/files?${new URLSearchParams({ filename: current.filename, subfolder: current.subfolder })}`, { method: "DELETE" });
                     const gone = current;
                     setItems((list) => (list ?? []).filter((i) => !(i.filename === gone.filename && i.subfolder === gone.subfolder)));
+                    setFavs((list) => list.filter((f) => keyOf(f) !== keyOf(gone)));
                     // beim nächsten Bild bleiben bzw. schließen, wenn es das letzte war
                     setOpen((o) => (o === null || shown.length <= 1 ? null : Math.min(o, shown.length - 2)));
                   } catch (err) {

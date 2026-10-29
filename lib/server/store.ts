@@ -99,3 +99,37 @@ export async function getAppSettings(): Promise<AppSettings> {
 export async function saveAppSettings(s: AppSettings) {
   await writeJson(config.dataPath("settings.json"), s);
 }
+
+// --- Favoriten (geordnete Liste, Reihenfolge änderbar) ---------------------------------
+
+export interface FavoriteItem {
+  filename: string;
+  subfolder: string;
+  type: string;
+  kind: "image" | "video";
+  promptId: string;
+  label: string;
+  timestamp: number;
+  [key: string]: unknown;
+}
+
+export const favKey = (f: { filename: string; subfolder: string }) => `${f.subfolder}/${f.filename}`;
+
+export async function getFavorites(): Promise<FavoriteItem[]> {
+  const list = await readJson<FavoriteItem[]>(config.dataPath("favorites.json"), []);
+  return Array.isArray(list) ? list : [];
+}
+
+export async function saveFavorites(list: FavoriteItem[]) {
+  // doppelte Einträge entfernen, Reihenfolge beibehalten
+  const seen = new Set<string>();
+  const clean = list.filter((f) => f?.filename && !seen.has(favKey(f)) && seen.add(favKey(f)));
+  await writeJson(config.dataPath("favorites.json"), clean);
+  return clean;
+}
+
+export async function removeFavorite(f: { filename: string; subfolder: string }) {
+  const list = await getFavorites();
+  const next = list.filter((x) => favKey(x) !== favKey(f));
+  if (next.length !== list.length) await saveFavorites(next);
+}

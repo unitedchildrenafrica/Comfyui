@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { BellToggle } from "@/components/Alarm";
 import { LoraList } from "@/components/LoraList";
 import { PasteButton } from "@/components/PasteButton";
 import { JobTracker, type Submitted } from "@/components/JobTracker";
@@ -87,7 +88,10 @@ export function VideoForm() {
   const o = options;
   return (
     <main className="page">
-      <h1 className="px-1 text-lg font-semibold">MiniMax H3</h1>
+      <div className="flex items-center justify-between px-1">
+        <h1 className="text-lg font-semibold">MiniMax H3</h1>
+        <BellToggle />
+      </div>
       {optError && (optError instanceof ApiError && optError.comfyDown ? <ComfyDown onRetry={reload} /> : <ErrorBox>{optError.message}</ErrorBox>)}
       {missing.length > 0 && <WarnBox>Auf dem Pod fehlen Nodes: {missing.join(", ")}. Video ist deaktiviert, bis ComfyUI-DaSiWa-Nodes installiert ist.</WarnBox>}
 
