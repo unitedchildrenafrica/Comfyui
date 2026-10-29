@@ -112,6 +112,11 @@ export function buildWorkflow({ settings: s, seed }: H3JobInput): ApiWorkflow {
     node(wf, "1512:2592").inputs.model = ["2678", 0];
   }
   node(wf, "2568").inputs.quality = s.quality;
+  // „Auto“ wählt bei DaSiWa zuerst AV1 – das importiert die iPhone-Fotos-App nicht.
+  // Deshalb standardmäßig H.264 8-bit mit AAC in MP4 (Werte aus _CODEC_OPTIONS usw.).
+  if (s.videoCodec !== "Auto") {
+    Object.assign(node(wf, "2568").inputs, { codec: "H.264", container: "MP4", bit_depth: "8-bit", audio_codec: "AAC" });
+  }
 
   return assertValid(wf);
 }

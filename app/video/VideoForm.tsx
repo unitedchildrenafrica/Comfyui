@@ -241,6 +241,19 @@ export function VideoForm() {
           disabled={o ? !o.h3.interpolationAvailable : false}
         />
         <Toggle checked={s.livePreview} onChange={(v) => set({ livePreview: v })} label="Live-Vorschau" disabled={o ? !o.h3.livePreviewAvailable : false} />
+        <Field
+          label="Format"
+          hint={s.videoCodec === "Auto" ? "AV1 ist kleiner, lässt sich am iPhone aber nicht in „Fotos“ sichern." : "H.264 – läuft überall und lässt sich am iPhone in „Fotos“ sichern."}
+        >
+          <Segmented
+            value={s.videoCodec ?? "H.264"}
+            options={[
+              { value: "H.264", label: "iPhone (H.264)" },
+              { value: "Auto", label: "Auto (AV1)" },
+            ]}
+            onChange={(v) => set({ videoCodec: v })}
+          />
+        </Field>
         <Field label="Video-Qualität (CRF, kleiner = besser)">
           <Slider value={s.quality} min={10} max={40} onChange={(v) => set({ quality: v })} />
         </Field>

@@ -71,6 +71,7 @@ export function defaultH3Settings(): H3Settings {
     interpolation: true,
     livePreview: true,
     quality: 26,
+    videoCodec: "H.264",
     promptInput: "blocks",
     blocks: emptyBlocks(),
     fullPrompt: "",

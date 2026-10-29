@@ -160,6 +160,15 @@ describe("H3 builder", () => {
     expect(wf["2797"]).toBeDefined();
   });
 
+  it("Video-Format: H.264 als Standard, Auto lässt das Template", () => {
+    const wf = buildH3({ settings: defaultH3Settings(), seed: 1 });
+    expect(wf["2568"].inputs).toMatchObject({ codec: "H.264", container: "MP4", bit_depth: "8-bit", audio_codec: "AAC" });
+    const old = buildH3({ settings: { ...defaultH3Settings(), videoCodec: undefined }, seed: 1 });
+    expect(old["2568"].inputs.codec).toBe("H.264");
+    const auto = buildH3({ settings: { ...defaultH3Settings(), videoCodec: "Auto" }, seed: 1 });
+    expect(auto["2568"].inputs).toMatchObject({ codec: "Auto", container: "Auto", bit_depth: "Auto", audio_codec: "Auto" });
+  });
+
   it("Interpolation und Live-Vorschau aus", () => {
     const s = { ...defaultH3Settings(), interpolation: false, livePreview: false };
     const wf = buildH3({ settings: s, seed: 1 });

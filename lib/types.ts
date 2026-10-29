@@ -94,6 +94,11 @@ export interface H3Settings {
   interpolation: boolean;
   livePreview: boolean;
   quality: number;
+  /**
+   * "H.264": MP4 mit H.264/AAC, 8-bit – lässt sich am iPhone in „Fotos“ sichern.
+   * "Auto": DaSiWa-Standard (AV1 per NVENC) – kleiner, aber iPhone-Fotos verwirft es.
+   */
+  videoCodec?: "H.264" | "Auto";
   promptInput: "blocks" | "full";
   blocks: H3Blocks;
   /** Freitext für Nicht-REF2VA-Modi bzw. Modus „Kompletten Prompt einfügen“ */
