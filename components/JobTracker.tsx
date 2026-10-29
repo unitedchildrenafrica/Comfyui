@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, viewUrl } from "@/lib/client";
 import { useLive } from "@/hooks/useLive";
 import { formatDuration } from "@/lib/format";
+import { LivePreview } from "./LivePreview";
 import { LiveProgress } from "./LiveProgress";
 import { ErrorBox, ProgressBar } from "./ui";
 
@@ -108,10 +109,7 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
       </div>
       {ids.length > 1 && <ProgressBar value={done} max={ids.length} />}
       {runningHere && state && <LiveProgress live={state} />}
-      {runningHere && state && state.previewSeq > 0 && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={`/api/preview?seq=${state.previewSeq}`} alt="Live-Vorschau" className="mx-auto max-h-80 rounded-lg" />
-      )}
+      {runningHere && state && <LivePreview live={state} className="max-h-80" />}
       {cancelled && <p className="text-sm text-muted">Abgebrochen – wartende Jobs wurden gelöscht.</p>}
       {Object.entries(results)
         .filter(([, r]) => r.error)

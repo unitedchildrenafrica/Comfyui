@@ -9,6 +9,8 @@ export interface LiveSnapshot {
   progress: { value: number; max: number } | null;
   queueRemaining: number;
   previewSeq: number;
+  previewMime: string | null;
+  previewStep: number | null;
   startedAt: number | null;
   serverNow: number;
   nodeLabel: string | null;

@@ -26,6 +26,8 @@ export async function GET(req: Request) {
           progress: s.progress,
           queueRemaining: s.queueRemaining,
           previewSeq: s.previewSeq,
+          previewMime: s.previewMime,
+          previewStep: s.previewStep,
           startedAt: s.startedAt,
           serverNow: Date.now(),
           nodeLabel: s.nodeLabel,

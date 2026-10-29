@@ -33,6 +33,9 @@ const KNOWN = new Set([
 // 1×1-PNG (lila)
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mOsb/j/HwAFVgK9VhB0xwAAAABJRU5ErkJggg==", "base64");
 
+// Optional: MP4 für die KJ-Vorschau (wie ModelPreviewOverrideKJ mit preview_frames > 1)
+const PREVIEW_MP4 = process.env.MOCK_PREVIEW_MP4 ? (await import("node:fs")).readFileSync(process.env.MOCK_PREVIEW_MP4) : null;
+
 const queue = []; // {id, number, prompt, clientId}
 let running = null;
 const history = {};
@@ -83,6 +86,14 @@ async function worker() {
       for (let i = 1; i <= steps && !running.interrupted; i++) {
         await new Promise((r) => setTimeout(r, Number(process.env.MOCK_STEP_MS || 300)));
         send(clientId, "progress", { value: i, max: steps, prompt_id: id, node: nodeId });
+        if (JSON.stringify(prompt).includes("ModelPreviewOverrideKJ"))
+          send(clientId, "kj_preview_override", {
+            node_id: "2737",
+            image: (PREVIEW_MP4 ?? PNG).toString("base64"),
+            mime: PREVIEW_MP4 ? "video/mp4" : "image/png",
+            step: i,
+            total: steps,
+          });
         const head = Buffer.alloc(8);
         head.writeUInt32BE(1, 0);
         head.writeUInt32BE(2, 4);

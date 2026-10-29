@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { LiveProgress } from "@/components/LiveProgress";
+import { LivePreview } from "@/components/LivePreview";
 import { ComfyDown, ErrorBox } from "@/components/ui";
 import { useLive } from "@/hooks/useLive";
 import { api, ApiError } from "@/lib/client";
@@ -88,10 +89,7 @@ export default function QueuePage() {
                 </button>
               </div>
               {live ? <LiveProgress live={live} /> : <div className="text-xs text-muted">Startet …</div>}
-              {live && live.previewSeq > 0 && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`/api/preview?seq=${live.previewSeq}`} alt="Live-Vorschau" className="mx-auto max-h-96 rounded-lg" />
-              )}
+              {live && <LivePreview live={live} />}
             </div>
           );
         })}

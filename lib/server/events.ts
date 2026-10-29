@@ -16,6 +16,10 @@ export interface LiveState {
   progress: { value: number; max: number } | null;
   queueRemaining: number;
   previewSeq: number;
+  /** MIME-Typ der letzten Vorschau: image/jpeg, image/png, image/webp oder video/mp4 (KJ, animiert mit Ton) */
+  previewMime: string | null;
+  /** Step, zu dem die Vorschau gehört (KJ-Vorschau) */
+  previewStep: number | null;
   /** Start des laufenden Jobs (ms, Server-Uhr) */
   startedAt: number | null;
   /** Titel und Klasse des aktuellen Nodes, z. B. „SamplerCustomAdvanced“ */
@@ -41,6 +45,8 @@ interface Hub {
   /** prompt_id → Node-ID → Klasse/Titel (für den Namen des aktuellen Nodes) */
   promptNodes: Map<string, Record<string, NodeName>>;
   doneNodes: Set<string>;
+  /** KJ-Vorschau aktiv → normale Binär-Vorschau ignorieren (sonst überschreibt sie das MP4) */
+  kjPreview: boolean;
 }
 
 interface NodeName {
@@ -64,6 +70,8 @@ function hub(): Hub {
         progress: null,
         queueRemaining: 0,
         previewSeq: 0,
+        previewMime: null,
+        previewStep: null,
         startedAt: null,
         nodeLabel: null,
         nodeClass: null,
@@ -78,6 +86,7 @@ function hub(): Hub {
       retry: null,
       promptNodes: new Map(),
       doneNodes: new Set(),
+      kjPreview: false,
     };
   }
   return g.__podHub;
@@ -175,6 +184,11 @@ function handleJson(msg: { type: string; data: Record<string, unknown> }) {
       s.progress = null;
       s.startedAt = Date.now();
       hub().doneNodes.clear();
+      // Vorschau des vorherigen Jobs nicht weiter anzeigen
+      hub().preview = null;
+      hub().kjPreview = false;
+      s.previewMime = null;
+      s.previewStep = null;
       updateNodeInfo();
       if (pid && !hub().promptNodes.has(pid)) loadPromptNodes(pid);
       changed("start", { promptId: pid });
@@ -228,12 +242,28 @@ function handleJson(msg: { type: string; data: Record<string, unknown> }) {
     case "execution_interrupted":
       if (pid) finish(pid, "interrupted");
       break;
+    case "kj_preview_override": {
+      // KJNodes „Model Preview Override“ (bei H3 mit taeh3): schickt die Vorschau als JSON mit
+      // Base64 – je nach Einstellung JPEG, animiertes WebP oder MP4 mit Ton (preview_frames > 1).
+      // Die normale ComfyUI-Vorschau ist bei --preview-method none (Standard) aus.
+      const image = d.image;
+      if (typeof image !== "string" || !image) break;
+      const h = hub();
+      h.kjPreview = true;
+      h.preview = { data: Buffer.from(image, "base64"), mime: typeof d.mime === "string" ? d.mime : "image/jpeg" };
+      s.previewMime = h.preview.mime;
+      s.previewStep = typeof d.step === "number" ? d.step : null;
+      s.previewSeq++;
+      changed("preview");
+      break;
+    }
   }
 }
 
 function handleBinary(buf: Buffer) {
   if (buf.length < 8) return;
   const h = hub();
+  if (h.kjPreview) return;
   const type = buf.readUInt32BE(0);
   let mime = "image/jpeg";
   let data: Buffer | null = null;
@@ -251,6 +281,8 @@ function handleBinary(buf: Buffer) {
   }
   if (!data || !data.length) return;
   h.preview = { data: Buffer.from(data), mime };
+  h.state.previewMime = mime;
+  h.state.previewStep = null;
   h.state.previewSeq++;
   changed("preview");
 }
