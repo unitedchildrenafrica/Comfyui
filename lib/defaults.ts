@@ -80,11 +80,17 @@ export function defaultH3Settings(): H3Settings {
   };
 }
 
+/**
+ * Wie „Native (ShortEdge 768px)“ im DaSiWa-Director: kurze Seite 768, lange Seite nach
+ * Seitenverhältnis auf das 32-px-Raster von H3 gerundet (js/minimax_h3_director.js, resolveCanvas).
+ */
 export const H3_RESOLUTIONS = [
-  { width: 1024, height: 768 },
-  { width: 1344, height: 768 },
-  { width: 768, height: 1344 },
-  { width: 768, height: 1024 },
+  { label: "16:9 quer", width: 1376, height: 768 },
+  { label: "4:3 quer", width: 1024, height: 768 },
+  { label: "3:2 quer", width: 1152, height: 768 },
+  { label: "1:1", width: 768, height: 768 },
+  { label: "9:16 hoch", width: 768, height: 1376 },
+  { label: "3:4 hoch", width: 768, height: 1024 },
 ] as const;
 
 /** Vordefinierte Presets (werden beim ersten Start in DATA_DIR angelegt). */

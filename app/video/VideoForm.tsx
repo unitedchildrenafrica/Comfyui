@@ -98,20 +98,24 @@ export function VideoForm() {
         <Field label="Dauer (Sekunden)">
           <Slider value={s.duration} min={2} max={15} step={1} onChange={(v) => set({ duration: v })} />
         </Field>
-        <Field label="Auflösung" right={`${s.width}×${s.height}`}>
+        <Field
+          label="Auflösung"
+          right={`${s.width}×${s.height}`}
+          hint={resId === -1 && (s.width % 32 !== 0 || s.height % 32 !== 0) ? "H3 rechnet im 32-px-Raster – am besten Vielfache von 32." : "Native 768p wie in ComfyUI (kurze Seite 768 px)."}
+        >
           <Segmented
             value={resId}
-            options={[...H3_RESOLUTIONS.map((r, i) => ({ value: i, label: `${r.width}×${r.height}` })), { value: -1, label: "Custom" }]}
-            onChange={(i) => (i >= 0 ? set({ width: H3_RESOLUTIONS[i].width, height: H3_RESOLUTIONS[i].height }) : set({ width: s.width + 16 }))}
+            options={[...H3_RESOLUTIONS.map((r, i) => ({ value: i, label: r.label })), { value: -1, label: "Custom" }]}
+            onChange={(i) => (i >= 0 ? set({ width: H3_RESOLUTIONS[i].width, height: H3_RESOLUTIONS[i].height }) : set({ width: s.width + 32 }))}
           />
         </Field>
         {resId === -1 && (
           <div className="grid grid-cols-2 gap-2">
             <Field label="Breite">
-              <NumberInput value={s.width} step={16} min={256} max={2048} onChange={(v) => set({ width: v ?? 1024 })} />
+              <NumberInput value={s.width} step={32} min={256} max={2048} onChange={(v) => set({ width: v ?? 1024 })} />
             </Field>
             <Field label="Höhe">
-              <NumberInput value={s.height} step={16} min={256} max={2048} onChange={(v) => set({ height: v ?? 768 })} />
+              <NumberInput value={s.height} step={32} min={256} max={2048} onChange={(v) => set({ height: v ?? 768 })} />
             </Field>
           </div>
         )}
