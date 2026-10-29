@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LoraList } from "@/components/LoraList";
+import { PasteButton } from "@/components/PasteButton";
 import { JobTracker, type Submitted } from "@/components/JobTracker";
 import { ComfyDown, ErrorBox, Field, NodeErrors, NumberInput, Section, Segmented, Select, Slider, Toggle, WarnBox } from "@/components/ui";
 import { useOptions } from "@/hooks/useOptions";
@@ -63,8 +64,8 @@ export function VideoForm() {
       set({ blocks, fullPrompt: text, promptInput: "blocks" });
       setPasteInfo("Blöcke erkannt und verteilt.");
     } else {
-      set({ fullPrompt: text });
-      setPasteInfo(isRef ? "Keine vollständigen Blöcke erkannt – Text wird unverändert verwendet." : null);
+      set({ fullPrompt: text, promptInput: "full" });
+      setPasteInfo(isRef ? "Keine vollständigen Blöcke erkannt – Text steht unverändert unter „Kompletten Prompt einfügen“." : null);
     }
   };
 
@@ -126,6 +127,7 @@ export function VideoForm() {
             Prompt prüfen
           </button>
         </div>
+        <PasteButton block label="📋 Prompt aus Zwischenablage einfügen (ersetzt alles)" onPaste={pasteFull} />
         {isRef && (
           <Segmented
             value={s.promptInput}
@@ -138,7 +140,19 @@ export function VideoForm() {
         )}
         {useBlocks ? (
           H3_BLOCK_KEYS.map((key) => (
-            <Field key={key} label={H3_BLOCK_LABELS[key]}>
+            <Field
+              key={key}
+              label={H3_BLOCK_LABELS[key]}
+              right={
+                <PasteButton
+                  label="📋"
+                  onPaste={(t) =>
+                    // Ganzer Prompt in der Zwischenablage → auf alle Blöcke verteilen, sonst nur diesen Block ersetzen
+                    parseH3Prompt(t) && (t.match(/^\s*[a-z_]+\s*:/gim)?.length ?? 0) >= 3 ? pasteFull(t) : set({ blocks: { ...s.blocks, [key]: t } })
+                  }
+                />
+              }
+            >
               <textarea
                 className={`input ${key === "detailed_description" ? "min-h-48" : "min-h-20"}`}
                 value={s.blocks[key]}

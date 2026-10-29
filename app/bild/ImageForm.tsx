@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LoraList } from "@/components/LoraList";
+import { PasteButton } from "@/components/PasteButton";
 import { JobTracker, type Submitted } from "@/components/JobTracker";
 import { ComfyDown, ErrorBox, Field, NodeErrors, NumberInput, Section, Segmented, Select, Slider, Toggle, WarnBox } from "@/components/ui";
 import { useOptions } from "@/hooks/useOptions";
@@ -168,16 +169,20 @@ export function ImageForm() {
         />
         {s.promptMode === "single" ? (
           <>
-            <Field label="Positiv">
+            <Field label="Positiv" right={<PasteButton onPaste={(t) => set({ positive: t })} />}>
               <textarea className="input min-h-32" value={s.positive} onChange={(e) => set({ positive: e.target.value })} placeholder="1girl, solo, …" />
             </Field>
-            <Field label="Negativ">
+            <Field label="Negativ" right={<PasteButton onPaste={(t) => set({ negative: t })} />}>
               <textarea className="input min-h-20" value={s.negative} onChange={(e) => set({ negative: e.target.value })} placeholder={defaultNegative} />
             </Field>
           </>
         ) : (
           <>
-            <Field label="Batch-Prompts" hint="Blöcke mit --- trennen. Zeilen: positive: / negative: / name:">
+            <Field
+              label="Batch-Prompts"
+              hint="Blöcke mit --- trennen. Zeilen: positive: / negative: / name:"
+              right={<PasteButton onPaste={(t) => set({ batchText: t })} />}
+            >
               <textarea
                 className="input min-h-72 font-mono text-sm"
                 value={s.batchText}
