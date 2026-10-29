@@ -1,72 +1,90 @@
 "use client";
 
-// Lauter Dauer-Alarm über Web Audio (keine Audiodatei nötig).
-// iOS: Ton geht erst, nachdem der Nutzer einmal getippt hat (unlockAlarm im Klick-Handler).
+// Wecker-Ton über ein <audio>-Element mit echter WAV-Datei.
+// Warum nicht Web Audio: iOS Safari hält Web Audio oft stumm (braucht frischen Tipp, folgt dem
+// Lautlos-Schalter). Media-Elemente spielen dagegen auch im Lautlos-Modus – wenn sie einmal per
+// Tipp freigegeben wurden. Deshalb gibt unlockAlarm() (im Klick-Handler!) beide Elemente frei:
+//  - keepAlive: spielt eine Stille-Datei in Endlosschleife und hält die Audio-Sitzung offen
+//  - alarm: wird kurz stumm gestartet und pausiert → darf später ohne Tipp losklingeln
 
 type AudioSessionNav = Navigator & { audioSession?: { type: string } };
 
-let ctx: AudioContext | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
+let keepAlive: HTMLAudioElement | null = null;
+let alarm: HTMLAudioElement | null = null;
+let unlocked = false;
 
-function context(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  if (!ctx) {
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return null;
-    ctx = new AC();
-  }
-  return ctx;
+function make(src: string) {
+  const a = new Audio(src);
+  a.loop = true;
+  a.preload = "auto";
+  a.setAttribute("playsinline", "");
+  return a;
 }
 
-/** Muss in einem Tipp/Klick aufgerufen werden. Spielt einen kurzen leisen Ton zum Freischalten. */
-export async function unlockAlarm() {
-  // Safari 17+: „playback“ spielt auch im Lautlos-Modus (wie ein Wecker)
+function elements() {
+  keepAlive ??= make("/sounds/silence.wav");
+  alarm ??= make("/sounds/alarm.wav");
+  return { keepAlive, alarm };
+}
+
+function playbackSession() {
+  // Safari 17+: wie eine Musik-App behandeln → ignoriert den Lautlos-Schalter
   try {
     const nav = navigator as AudioSessionNav;
     if (nav.audioSession) nav.audioSession.type = "playback";
   } catch {}
-  const c = context();
-  if (!c) return false;
-  if (c.state !== "running") await c.resume().catch(() => {});
-  beep(c, 0, 660, 0.05, 0.05);
-  return c.state === "running";
 }
 
+/** Muss direkt in einem Tipp/Klick aufgerufen werden. */
+export async function unlockAlarm(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  playbackSession();
+  const { keepAlive: k, alarm: a } = elements();
+  try {
+    await k.play();
+    a.muted = true;
+    await a.play();
+    a.pause();
+    a.currentTime = 0;
+    a.muted = false;
+    unlocked = true;
+  } catch {
+    unlocked = false;
+  }
+  return unlocked;
+}
+
+/** Freigegeben und die Audio-Sitzung läuft noch (iOS stoppt sie z. B. nach einem Anruf). */
 export function alarmReady() {
-  return ctx?.state === "running";
+  return unlocked && !!keepAlive && !keepAlive.paused;
 }
 
-function beep(c: AudioContext, at: number, freq: number, dur: number, vol: number) {
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  osc.type = "square";
-  osc.frequency.value = freq;
-  const t = c.currentTime + at;
-  gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(vol, t + 0.01);
-  gain.gain.setValueAtTime(vol, t + dur - 0.02);
-  gain.gain.linearRampToValueAtTime(0, t + dur);
-  osc.connect(gain).connect(c.destination);
-  osc.start(t);
-  osc.stop(t + dur + 0.05);
-}
-
-/** Wecker-Muster (hoch-tief-hoch, Pause) in Dauerschleife, bis stopAlarm(). */
 export function startAlarm() {
-  const c = context();
-  if (!c || timer) return;
-  c.resume().catch(() => {});
-  const pattern = () => {
-    beep(c, 0, 1046, 0.18, 1);
-    beep(c, 0.22, 784, 0.18, 1);
-    beep(c, 0.44, 1046, 0.18, 1);
-    beep(c, 0.66, 784, 0.18, 1);
-  };
-  pattern();
-  timer = setInterval(pattern, 1200);
+  const { alarm: a } = elements();
+  playbackSession();
+  a.loop = true;
+  a.muted = false;
+  a.currentTime = 0;
+  a.play().catch(() => {});
 }
 
 export function stopAlarm() {
-  if (timer) clearInterval(timer);
-  timer = null;
+  if (alarm) {
+    alarm.pause();
+    alarm.currentTime = 0;
+  }
+}
+
+/** Glocke aus: auch die Stille-Schleife beenden. */
+export function releaseAlarm() {
+  stopAlarm();
+  keepAlive?.pause();
+  unlocked = false;
+}
+
+/** „Ton testen“: 3 Sekunden Alarm (im Klick-Handler aufrufen). */
+export async function testAlarm() {
+  await unlockAlarm();
+  startAlarm();
+  setTimeout(stopAlarm, 3000);
 }

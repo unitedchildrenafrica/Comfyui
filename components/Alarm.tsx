@@ -1,9 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLive } from "@/hooks/useLive";
-import { alarmReady, startAlarm, stopAlarm, unlockAlarm } from "@/lib/alarm";
+import { alarmReady, releaseAlarm, startAlarm, stopAlarm, testAlarm, unlockAlarm } from "@/lib/alarm";
 import { api } from "@/lib/client";
 
 const KEY = "pf.bell";
@@ -51,16 +51,22 @@ export function useBell() {
         localStorage.removeItem(SEEN_KEY);
       } catch {}
       await unlockAlarm();
-    } else stopAlarm();
+    } else releaseAlarm();
     window.dispatchEvent(new Event(EVENT));
   }, []);
   return { on, toggle };
 }
 
-/** 🔔-Knopf zum An-/Ausschalten (z. B. neben der Überschrift). */
+/** 🔔-Knopf zum An-/Ausschalten (z. B. neben der Überschrift), mit „Test“ wenn an. */
 export function BellToggle() {
   const { on, toggle } = useBell();
   return (
+    <span className="inline-flex items-center gap-1.5">
+      {on && (
+        <button type="button" onClick={() => testAlarm()} className="min-h-10 rounded-xl border border-line bg-bg px-3 text-sm text-soft">
+          🔊 Test
+        </button>
+      )}
     <button
       type="button"
       onClick={toggle}
@@ -69,6 +75,7 @@ export function BellToggle() {
     >
       {on ? "🔔 Wecker an" : "🔕 Wecker aus"}
     </button>
+    </span>
   );
 }
 
@@ -85,6 +92,8 @@ export function AlarmHost() {
   const [ringing, setRinging] = useState<{ label: string; error: boolean } | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   const active = on && !path.startsWith("/login");
+  // Live gemeldete Abbrüche (Stopp/Abbrechen) – zusätzlich zum Verlauf, falls der es nicht vermerkt
+  const interrupted = useRef(new Set<string>());
 
   const check = useCallback(async () => {
     if (!active) return;
@@ -109,17 +118,29 @@ export function AlarmHost() {
     const fresh = recent.filter((r) => !seen.has(r.promptId));
     fresh.forEach((r) => seen.add(r.promptId));
     if (fresh.length) writeSeen(seen);
-    const video = fresh.find((r) => r.kind === "video");
+    // Selbst gestoppte Videos („interrupted“) lösen nie einen Alarm aus
+    const video = fresh.find((r) => r.kind === "video" && r.status !== "interrupted" && !interrupted.current.has(r.promptId));
     if (video) {
       setRinging({ label: video.label, error: video.status === "error" });
       startAlarm();
     }
   }, [active]);
 
-  useLive(() => {
+  useLive((e) => {
+    if (e.result === "interrupted") interrupted.current.add(e.promptId);
     // kurz warten, bis ComfyUI den Verlauf geschrieben hat
     setTimeout(check, 1500);
   }, active);
+
+  // Nach dem Neuladen: der erste Tipp irgendwo auf der Seite gibt den Ton wieder frei
+  useEffect(() => {
+    if (!active) return;
+    const onTap = () => {
+      if (!alarmReady()) unlockAlarm();
+    };
+    document.addEventListener("pointerdown", onTap, true);
+    return () => document.removeEventListener("pointerdown", onTap, true);
+  }, [active]);
 
   useEffect(() => {
     if (!active) return;

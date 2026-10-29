@@ -123,7 +123,7 @@ export default function QueuePage() {
             {queue!.recent.map((r) => (
               <li key={r.promptId} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <span className="min-w-0 truncate">
-                  {r.status === "error" ? "⚠ " : "✓ "}
+                  {r.status === "error" ? "⚠ " : r.status === "interrupted" ? "⏹ " : "✓ "}
                   {r.label} <span className="text-xs text-muted">{r.generator}</span>
                 </span>
                 <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{formatDuration(r.durationMs)}</span>

@@ -50,3 +50,22 @@ describe("resolveOutputFile", () => {
     expect(resolveOutputFile("wai", ".hidden.png")).toBeNull();
   });
 });
+
+describe("parseHistory: selbst gestoppt", () => {
+  it("execution_interrupted → interrupted statt error", () => {
+    const [e] = parseHistory({
+      x: {
+        outputs: {},
+        status: {
+          status_str: "error",
+          completed: false,
+          messages: [
+            ["execution_start", { timestamp: 1 }],
+            ["execution_interrupted", { timestamp: 2 }],
+          ],
+        },
+      },
+    });
+    expect(e.status).toBe("interrupted");
+  });
+});

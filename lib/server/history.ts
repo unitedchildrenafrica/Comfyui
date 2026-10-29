@@ -9,7 +9,8 @@ export interface MediaFile {
 
 export interface HistoryEntry {
   promptId: string;
-  status: "success" | "error" | "running" | "unknown";
+  /** "interrupted" = selbst gestoppt (ComfyUI führt das im Verlauf als error) */
+  status: "success" | "error" | "interrupted" | "running" | "unknown";
   timestamp: number;
   files: MediaFile[];
   error?: string;
@@ -56,7 +57,15 @@ export function parseHistory(raw: RawHistory): HistoryEntry[] {
     const statusStr = h.status?.status_str;
     return {
       promptId,
-      status: statusStr === "success" ? "success" : statusStr === "error" ? "error" : h.status?.completed ? "success" : "unknown",
+      status: messages.some((m) => m[0] === "execution_interrupted")
+        ? "interrupted"
+        : statusStr === "success"
+          ? "success"
+          : statusStr === "error"
+            ? "error"
+            : h.status?.completed
+              ? "success"
+              : "unknown",
       timestamp: typeof start === "number" ? start : 0,
       files,
       error: errMsg ? String(errMsg.exception_message ?? "Fehler") : undefined,
