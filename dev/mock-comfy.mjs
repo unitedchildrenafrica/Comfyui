@@ -67,16 +67,30 @@ async function worker() {
   running = queue.shift();
   const { id, clientId, prompt } = running;
   sendStatus();
-  send(clientId, "execution_start", { prompt_id: id });
-  const steps = 8;
-  for (let i = 1; i <= steps && running?.id === id && !running.interrupted; i++) {
-    await new Promise((r) => setTimeout(r, 300));
-    send(clientId, "executing", { node: "7", prompt_id: id });
-    send(clientId, "progress", { value: i, max: steps, prompt_id: id, node: "7" });
-    const head = Buffer.alloc(8);
-    head.writeUInt32BE(1, 0);
-    head.writeUInt32BE(2, 4);
-    for (const [ws, cid] of sockets) if (cid === clientId) ws.send(Buffer.concat([head, PNG]));
+  const startTs = Date.now();
+  send(clientId, "execution_start", { prompt_id: id, timestamp: startTs });
+  // wie ComfyUI: ein Teil der Nodes kommt aus dem Cache, dann laufen die übrigen nacheinander
+  const ids = Object.keys(prompt);
+  const cached = ids.slice(0, Math.floor(ids.length / 3));
+  send(clientId, "execution_cached", { nodes: cached, prompt_id: id, timestamp: Date.now() });
+  const sampler = ids.find((k) => /Sampler/.test(prompt[k].class_type)) ?? ids[0];
+  const rest = ids.slice(cached.length);
+  const steps = Number(process.env.MOCK_STEPS || 8);
+  for (const nodeId of rest) {
+    if (running?.id !== id || running.interrupted) break;
+    send(clientId, "executing", { node: nodeId, prompt_id: id });
+    if (nodeId === sampler) {
+      for (let i = 1; i <= steps && !running.interrupted; i++) {
+        await new Promise((r) => setTimeout(r, Number(process.env.MOCK_STEP_MS || 300)));
+        send(clientId, "progress", { value: i, max: steps, prompt_id: id, node: nodeId });
+        const head = Buffer.alloc(8);
+        head.writeUInt32BE(1, 0);
+        head.writeUInt32BE(2, 4);
+        for (const [ws, cid] of sockets) if (cid === clientId) ws.send(Buffer.concat([head, PNG]));
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 40));
+    }
   }
   const ok = !running.interrupted;
   const fail = JSON.stringify(prompt).includes("FAIL_ME");
@@ -86,7 +100,12 @@ async function worker() {
     status: {
       status_str: ok && !fail ? "success" : "error",
       completed: ok && !fail,
-      messages: [["execution_start", { prompt_id: id, timestamp: Date.now() }], ...(fail ? [["execution_error", { prompt_id: id, exception_message: "Simulierter Fehler" }]] : [])],
+      messages: [
+        ["execution_start", { prompt_id: id, timestamp: startTs }],
+        fail
+          ? ["execution_error", { prompt_id: id, exception_message: "Simulierter Fehler", timestamp: Date.now() }]
+          : [ok ? "execution_success" : "execution_interrupted", { prompt_id: id, timestamp: Date.now() }],
+      ],
     },
   };
   if (!ok) send(clientId, "execution_interrupted", { prompt_id: id });

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ComfyDown, ErrorBox, ProgressBar } from "@/components/ui";
+import { LiveProgress } from "@/components/LiveProgress";
+import { ComfyDown, ErrorBox } from "@/components/ui";
 import { useLive } from "@/hooks/useLive";
 import { api, ApiError } from "@/lib/client";
+import { formatDuration } from "@/lib/format";
 
 interface QueueItem {
   number: number;
@@ -14,8 +16,16 @@ interface QueueItem {
   batchId: string | null;
 }
 
+interface RecentItem {
+  promptId: string;
+  label: string;
+  generator: string | null;
+  status: string;
+  durationMs: number | null;
+}
+
 export default function QueuePage() {
-  const [queue, setQueue] = useState<{ running: QueueItem[]; pending: QueueItem[] } | null>(null);
+  const [queue, setQueue] = useState<{ running: QueueItem[]; pending: QueueItem[]; recent: RecentItem[] } | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -77,16 +87,7 @@ export default function QueuePage() {
                   Stopp
                 </button>
               </div>
-              {live?.progress ? (
-                <>
-                  <div className="text-xs text-muted">
-                    Step {live.progress.value} / {live.progress.max} {live.node ? `· Node ${live.node}` : ""}
-                  </div>
-                  <ProgressBar value={live.progress.value} max={live.progress.max} />
-                </>
-              ) : (
-                <div className="text-xs text-muted">{live?.node ? `Node ${live.node}` : "Startet …"}</div>
-              )}
+              {live ? <LiveProgress live={live} /> : <div className="text-xs text-muted">Startet …</div>}
               {live && live.previewSeq > 0 && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={`/api/preview?seq=${live.previewSeq}`} alt="Live-Vorschau" className="mx-auto max-h-96 rounded-lg" />
@@ -112,6 +113,23 @@ export default function QueuePage() {
           ))}
         </ul>
       </section>
+
+      {(queue?.recent.length ?? 0) > 0 && (
+        <section className="card space-y-2 p-4">
+          <h2 className="font-semibold">Zuletzt fertig</h2>
+          <ul className="divide-y divide-line">
+            {queue!.recent.map((r) => (
+              <li key={r.promptId} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className="min-w-0 truncate">
+                  {r.status === "error" ? "⚠ " : "✓ "}
+                  {r.label} <span className="text-xs text-muted">{r.generator}</span>
+                </span>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{formatDuration(r.durationMs)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <button

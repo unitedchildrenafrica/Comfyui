@@ -5,7 +5,7 @@ import { buildWorkflow as buildH3, h3PromptText } from "../builders/h3";
 import { buildWorkflow as buildWai } from "../builders/wai";
 import type { H3Settings, ImageSettings, JobRecord, PromptItem } from "../types";
 import { ComfyPromptError, nodeExists, queuePrompt } from "./comfy";
-import { getClientId } from "./events";
+import { getClientId, registerPromptNodes } from "./events";
 import { getAppSettings, saveBatch, saveJob } from "./store";
 
 export class BatchParseError extends Error {
@@ -64,6 +64,7 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
     const wf = settings.generator === "anima" ? buildAnima(input, { shiftNode }) : buildWai(input);
     try {
       const promptId = await queuePrompt(wf, clientId);
+      registerPromptNodes(promptId, wf);
       result.promptIds.push(promptId);
       result.seeds.push(seed);
       const job: JobRecord = {
@@ -106,6 +107,7 @@ export async function submitVideoJob(settings: H3Settings) {
   const seed = settings.seed ?? randomSeed();
   const wf = buildH3({ settings, seed });
   const promptId = await queuePrompt(wf, getClientId());
+  registerPromptNodes(promptId, wf);
   const text = h3PromptText(settings);
   await saveJob({
     promptId,

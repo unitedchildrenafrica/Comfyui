@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { comfyJson } from "./comfy";
 import { config } from "./config";
 
 export interface JobError {
@@ -15,6 +16,16 @@ export interface LiveState {
   progress: { value: number; max: number } | null;
   queueRemaining: number;
   previewSeq: number;
+  /** Start des laufenden Jobs (ms, Server-Uhr) */
+  startedAt: number | null;
+  /** Titel und Klasse des aktuellen Nodes, z. B. „SamplerCustomAdvanced“ */
+  nodeLabel: string | null;
+  nodeClass: string | null;
+  /** fertige (inkl. gecachte) Nodes / alle Nodes des Jobs */
+  nodesDone: number;
+  nodesTotal: number;
+  /** prompt_id → Laufzeit in ms, nur für Jobs seit App-Start */
+  durations: Record<string, number>;
   /** prompt_id → Ergebnis, nur für Jobs seit App-Start */
   finished: Record<string, "success" | "error" | "interrupted">;
   errors: Record<string, JobError>;
@@ -27,6 +38,14 @@ interface Hub {
   preview: { data: Buffer; mime: string } | null;
   ws: WebSocket | null;
   retry: ReturnType<typeof setTimeout> | null;
+  /** prompt_id → Node-ID → Klasse/Titel (für den Namen des aktuellen Nodes) */
+  promptNodes: Map<string, Record<string, NodeName>>;
+  doneNodes: Set<string>;
+}
+
+interface NodeName {
+  class_type: string;
+  title?: string;
 }
 
 const g = globalThis as unknown as { __podHub?: Hub };
@@ -45,12 +64,20 @@ function hub(): Hub {
         progress: null,
         queueRemaining: 0,
         previewSeq: 0,
+        startedAt: null,
+        nodeLabel: null,
+        nodeClass: null,
+        nodesDone: 0,
+        nodesTotal: 0,
+        durations: {},
         finished: {},
         errors: {},
       },
       preview: null,
       ws: null,
       retry: null,
+      promptNodes: new Map(),
+      doneNodes: new Set(),
     };
   }
   return g.__podHub;
@@ -68,18 +95,67 @@ function changed(event: string, extra?: unknown) {
   h.emitter.emit("change", { event, extra });
 }
 
+/** Merkt sich die Node-Namen eines Workflows, damit der Fortschritt „SamplerCustomAdvanced“ statt „1512:2591“ zeigt. */
+export function registerPromptNodes(promptId: string, workflow: Record<string, { class_type?: string; _meta?: { title?: string } }>) {
+  const h = hub();
+  const names: Record<string, NodeName> = {};
+  for (const [id, n] of Object.entries(workflow)) names[id] = { class_type: n.class_type ?? "?", title: n._meta?.title };
+  h.promptNodes.set(promptId, names);
+  // nicht unbegrenzt wachsen lassen
+  while (h.promptNodes.size > 600) h.promptNodes.delete(h.promptNodes.keys().next().value!);
+}
+
+/** Für Jobs aus der ComfyUI-Oberfläche: Workflow aus /queue holen. */
+async function loadPromptNodes(promptId: string) {
+  const h = hub();
+  if (h.promptNodes.has(promptId)) return;
+  try {
+    const q = await comfyJson<{ queue_running: unknown[][] }>("/queue");
+    const entry = q.queue_running?.find((e) => e[1] === promptId);
+    if (entry?.[2]) registerPromptNodes(promptId, entry[2] as Record<string, { class_type?: string }>);
+  } catch {}
+  updateNodeInfo();
+  changed("executing");
+}
+
+function updateNodeInfo() {
+  const h = hub();
+  const s = h.state;
+  const names = s.runningPromptId ? h.promptNodes.get(s.runningPromptId) : undefined;
+  s.nodesTotal = names ? Object.keys(names).length : 0;
+  s.nodesDone = Math.min(h.doneNodes.size, s.nodesTotal || h.doneNodes.size);
+  const n = s.node && names ? names[s.node] : undefined;
+  s.nodeClass = n?.class_type ?? null;
+  s.nodeLabel = n ? n.title || n.class_type : s.node ? `Node ${s.node}` : null;
+}
+
 function finish(promptId: string, result: "success" | "error" | "interrupted") {
-  const s = hub().state;
+  const h = hub();
+  const s = h.state;
   // execution_success/_error UND executing(null) melden dasselbe Ende → nur einmal
   if (s.finished[promptId]) return;
   s.finished[promptId] = result;
   trim(s.finished);
   if (s.runningPromptId === promptId) {
+    if (s.startedAt) {
+      s.durations[promptId] = Date.now() - s.startedAt;
+      trim(s.durations);
+    }
     s.runningPromptId = null;
     s.node = null;
     s.progress = null;
+    s.startedAt = null;
+    s.nodeLabel = null;
+    s.nodeClass = null;
+    s.nodesDone = 0;
+    s.nodesTotal = 0;
+    h.doneNodes.clear();
   }
-  changed("finished", { promptId, result });
+  changed("finished", { promptId, result, durationMs: s.durations[promptId] ?? null });
+}
+
+function markNodeDone(id: string | null) {
+  if (id) hub().doneNodes.add(id);
 }
 
 function handleJson(msg: { type: string; data: Record<string, unknown> }) {
@@ -97,22 +173,42 @@ function handleJson(msg: { type: string; data: Record<string, unknown> }) {
       s.runningPromptId = pid ?? null;
       s.node = null;
       s.progress = null;
+      s.startedAt = Date.now();
+      hub().doneNodes.clear();
+      updateNodeInfo();
+      if (pid && !hub().promptNodes.has(pid)) loadPromptNodes(pid);
       changed("start", { promptId: pid });
+      break;
+    case "execution_cached":
+      for (const id of (d.nodes as string[] | undefined) ?? []) markNodeDone(String(id));
+      updateNodeInfo();
+      changed("executing");
       break;
     case "executing":
       if (d.node === null || d.node === undefined) {
         if (pid) finish(pid, s.errors[pid] ? "error" : "success");
       } else {
         s.runningPromptId = pid ?? s.runningPromptId;
+        if (!s.startedAt) s.startedAt = Date.now();
+        // der vorherige Node ist fertig, sobald der nächste startet
+        if (s.node && s.node !== String(d.node)) markNodeDone(s.node);
         s.node = String(d.node);
         s.progress = null;
+        updateNodeInfo();
         changed("executing");
       }
+      break;
+    case "executed":
+      if (d.node) markNodeDone(String(d.node));
+      updateNodeInfo();
       break;
     case "progress":
       s.runningPromptId = pid ?? s.runningPromptId;
       s.progress = { value: Number(d.value), max: Number(d.max) };
-      if (d.node) s.node = String(d.node);
+      if (d.node && String(d.node) !== s.node) {
+        s.node = String(d.node);
+        updateNodeInfo();
+      }
       changed("progress");
       break;
     case "execution_success":

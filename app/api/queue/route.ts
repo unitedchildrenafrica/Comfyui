@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { postJson } from "@/lib/server/comfy";
 import { getLiveState } from "@/lib/server/events";
-import { getQueue } from "@/lib/server/history";
+import { getHistory, getQueue } from "@/lib/server/history";
 import { badRequest, errorResponse } from "@/lib/server/http";
 import { getJobs } from "@/lib/server/store";
 
@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const q = await getQueue();
+    const [q, history] = await Promise.all([getQueue(), getHistory(8).catch(() => [])]);
     const ids = [...q.running, ...q.pending].map((e) => e.promptId);
-    const jobs = await getJobs(ids.slice(0, 500));
+    const jobs = await getJobs([...ids.slice(0, 500), ...history.map((h) => h.promptId)]);
     const describe = (e: { number: number; promptId: string }) => {
       const j = jobs[e.promptId];
       return {
@@ -23,8 +23,16 @@ export async function GET() {
         createdAt: j?.createdAt ?? null,
       };
     };
-    const { finished: _f, errors: _e, ...live } = getLiveState();
-    return Response.json({ running: q.running.map(describe), pending: q.pending.map(describe), live });
+    const { finished: _f, errors: _e, durations: _d, ...live } = getLiveState();
+    const recent = history.map((h) => ({
+      promptId: h.promptId,
+      label: jobs[h.promptId]?.label ?? h.files[0]?.filename ?? "Job",
+      generator: jobs[h.promptId]?.generator ?? null,
+      status: h.status,
+      durationMs: h.durationMs ?? getLiveState().durations[h.promptId] ?? null,
+      timestamp: h.timestamp,
+    }));
+    return Response.json({ running: q.running.map(describe), pending: q.pending.map(describe), recent, live });
   } catch (err) {
     return errorResponse(err);
   }

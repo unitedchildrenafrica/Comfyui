@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
           ...f,
           promptId: e.promptId,
           timestamp: e.timestamp,
+          durationMs: e.durationMs,
           folder: f.subfolder.split("/")[0] || "(ohne)",
           label: jobs[e.promptId]?.label ?? f.filename,
           generator: jobs[e.promptId]?.generator ?? null,

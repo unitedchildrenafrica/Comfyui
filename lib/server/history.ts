@@ -13,6 +13,8 @@ export interface HistoryEntry {
   timestamp: number;
   files: MediaFile[];
   error?: string;
+  /** Laufzeit von execution_start bis Ende (ms), falls ComfyUI Zeitstempel liefert */
+  durationMs: number | null;
 }
 
 type RawHistory = Record<
@@ -49,6 +51,7 @@ export function parseHistory(raw: RawHistory): HistoryEntry[] {
     }
     const messages = h.status?.messages ?? [];
     const start = messages.find((m) => m[0] === "execution_start")?.[1]?.timestamp;
+    const end = messages.find((m) => ["execution_success", "execution_error", "execution_interrupted"].includes(m[0]))?.[1]?.timestamp;
     const errMsg = messages.find((m) => m[0] === "execution_error")?.[1];
     const statusStr = h.status?.status_str;
     return {
@@ -57,6 +60,7 @@ export function parseHistory(raw: RawHistory): HistoryEntry[] {
       timestamp: typeof start === "number" ? start : 0,
       files,
       error: errMsg ? String(errMsg.exception_message ?? "Fehler") : undefined,
+      durationMs: typeof start === "number" && typeof end === "number" && end >= start ? end - start : null,
     };
   });
 }

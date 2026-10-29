@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, viewUrl } from "@/lib/client";
 import { useLive } from "@/hooks/useLive";
+import { formatDuration } from "@/lib/format";
+import { LiveProgress } from "./LiveProgress";
 import { ErrorBox, ProgressBar } from "./ui";
 
 interface MediaFile {
@@ -13,7 +15,7 @@ interface MediaFile {
 }
 
 interface JobStatus {
-  history: { status: string; files: MediaFile[]; error?: string } | null;
+  history: { status: string; files: MediaFile[]; error?: string; durationMs: number | null } | null;
   error: { message: string; nodeId?: string; nodeType?: string } | null;
 }
 
@@ -72,6 +74,10 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
   const runningHere = state?.runningPromptId && ids.includes(state.runningPromptId);
   const allDone = done >= ids.length || cancelled;
   const files = ids.flatMap((id) => results[id]?.history?.files ?? []);
+  const durations = Object.values(results)
+    .map((r) => r.history?.durationMs)
+    .filter((d): d is number => typeof d === "number");
+  const avg = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
   const cancel = async () => {
     if (submitted.batchId && ids.length > 1) await api(`/api/batches/${submitted.batchId}`, { method: "POST" });
@@ -84,7 +90,14 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
     <div className="card space-y-3 p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">
-          {ids.length > 1 ? `${done} / ${ids.length} fertig` : allDone ? "Fertig" : runningHere ? "Läuft …" : "In der Warteschlange"}
+          {ids.length > 1
+            ? `${done} / ${ids.length} fertig`
+            : allDone
+              ? `Fertig${durations[0] !== undefined ? ` in ${formatDuration(durations[0])}` : ""}`
+              : runningHere
+                ? "Läuft …"
+                : "In der Warteschlange"}
+          {ids.length > 1 && avg !== null && <span className="text-sm font-normal text-muted"> · Ø {formatDuration(avg)} pro Job</span>}
           {failed > 0 && <span className="text-red-300"> · {failed} Fehler</span>}
         </span>
         {!allDone && (
@@ -94,14 +107,7 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
         )}
       </div>
       {ids.length > 1 && <ProgressBar value={done} max={ids.length} />}
-      {runningHere && state?.progress && (
-        <div className="space-y-1">
-          <div className="text-xs text-muted">
-            Step {state.progress.value} / {state.progress.max}
-          </div>
-          <ProgressBar value={state.progress.value} max={state.progress.max} />
-        </div>
-      )}
+      {runningHere && state && <LiveProgress live={state} />}
       {runningHere && state && state.previewSeq > 0 && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={`/api/preview?seq=${state.previewSeq}`} alt="Live-Vorschau" className="mx-auto max-h-80 rounded-lg" />

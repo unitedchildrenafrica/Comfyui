@@ -9,11 +9,20 @@ export interface LiveSnapshot {
   progress: { value: number; max: number } | null;
   queueRemaining: number;
   previewSeq: number;
+  startedAt: number | null;
+  serverNow: number;
+  nodeLabel: string | null;
+  nodeClass: string | null;
+  nodesDone: number;
+  nodesTotal: number;
+  /** Date.now() - serverNow beim Empfang (gleicht Uhr-Abweichung aus) */
+  clockOffset: number;
 }
 
 export interface FinishedEvent {
   promptId: string;
   result: "success" | "error" | "interrupted";
+  durationMs: number | null;
   error: { message: string; nodeId?: string; nodeType?: string } | null;
 }
 
@@ -32,7 +41,8 @@ export function useLive(onFinished?: (e: FinishedEvent) => void) {
       es = new EventSource("/api/events");
       es.addEventListener("state", (e) => {
         setSseOk(true);
-        setState(JSON.parse((e as MessageEvent).data));
+        const data = JSON.parse((e as MessageEvent).data);
+        setState({ ...data, clockOffset: Date.now() - (data.serverNow ?? Date.now()) });
       });
       es.addEventListener("finished", (e) => cb.current?.(JSON.parse((e as MessageEvent).data)));
       es.onerror = () => {

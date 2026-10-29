@@ -26,6 +26,12 @@ export async function GET(req: Request) {
           progress: s.progress,
           queueRemaining: s.queueRemaining,
           previewSeq: s.previewSeq,
+          startedAt: s.startedAt,
+          serverNow: Date.now(),
+          nodeLabel: s.nodeLabel,
+          nodeClass: s.nodeClass,
+          nodesDone: s.nodesDone,
+          nodesTotal: s.nodesTotal,
         };
       };
       send("state", snapshot());

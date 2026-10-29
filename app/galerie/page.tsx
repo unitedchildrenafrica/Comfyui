@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ComfyDown, ErrorBox, Segmented, Select } from "@/components/ui";
 import { api, ApiError, viewUrl } from "@/lib/client";
+import { formatDuration } from "@/lib/format";
 
 interface Item {
   filename: string;
@@ -17,6 +18,7 @@ interface Item {
   generator: string | null;
   seed: number | null;
   hasSettings: boolean;
+  durationMs: number | null;
 }
 
 export default function GalleryPage() {
@@ -132,6 +134,7 @@ export default function GalleryPage() {
             <span className="min-w-0 truncate">
               {current.label}
               {current.seed !== null && <span className="text-muted"> · Seed {current.seed}</span>}
+              {current.durationMs !== null && <span className="text-muted"> · ⏱ {formatDuration(current.durationMs)}</span>}
             </span>
             <button type="button" className="btn btn-ghost px-3" onClick={() => setOpen(null)} aria-label="Schließen">
               ✕
