@@ -3,8 +3,13 @@
 import { useRef, useState } from "react";
 import { viewUrl } from "@/lib/client";
 import { H3_MAX_AUDIO, H3_MAX_IMAGES } from "@/lib/builders/h3";
+import { audioRefWarnings, usedSeconds } from "@/lib/h3refs";
 import type { H3Ref } from "@/lib/types";
-import { ErrorBox, NumberInput } from "@/components/ui";
+import { ErrorBox, NumberInput, WarnBox } from "@/components/ui";
+
+// Breiter Filter: Mit nur „audio/*“ blendet iOS/macOS manche Dateien aus (z. B. .m4a aus Sprachmemos).
+// Videos sind erlaubt – die Node nimmt dann deren Tonspur.
+const AUDIO_ACCEPT = "audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.mp4,.mov";
 
 function inputFile(filename: string) {
   const i = filename.lastIndexOf("/");
@@ -125,7 +130,21 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
                   ✕
                 </button>
               </div>
-              <audio src={viewUrl(inputFile(r.filename))} controls className="w-full" preload="metadata" />
+              <audio
+                src={viewUrl(inputFile(r.filename))}
+                controls
+                className="w-full"
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                  const d = e.currentTarget.duration;
+                  if (Number.isFinite(d) && Math.abs(d - (r.duration ?? -1)) > 0.05) patch(r, { duration: d });
+                }}
+              />
+              <p className="text-xs text-muted">
+                {r.duration !== undefined
+                  ? `Länge ${r.duration.toFixed(1)} s · genutzt ${usedSeconds(r)?.toFixed(1)} s`
+                  : "Länge wird ermittelt … (bei Videos evtl. unbekannt)"}
+              </p>
               <div className="grid grid-cols-2 gap-2 text-xs text-muted">
                 <label className="space-y-1">
                   Start (s)
@@ -143,8 +162,20 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
               + Audio-Referenz ({audios.length}/{H3_MAX_AUDIO})
             </button>
           )}
-          <input ref={audioInput} type="file" accept="audio/*" multiple hidden onChange={(e) => add(e.target.files, "audio").then(() => (e.target.value = ""))} />
-          <p className="text-xs text-muted">Speaker-Zuordnung: &lt;Audio 1&gt; im Prompt der Stimme von (S1) zuordnen. Audio braucht mindestens ein Bild, max. 15 s gesamt.</p>
+          <input ref={audioInput} type="file" accept={AUDIO_ACCEPT} multiple hidden onChange={(e) => add(e.target.files, "audio").then(() => (e.target.value = ""))} />
+          <p className="text-xs text-muted">
+            MP3, WAV, M4A, FLAC, OGG – oder ein Video (dann zählt nur der Ton). Jede Datei 2–15 s, alle zusammen max. 15 s, mindestens ein Bild nötig.
+            Speaker-Zuordnung: &lt;Audio 1&gt; im Prompt der Stimme von (S1) zuordnen.
+          </p>
+          {audioRefWarnings(refs).length > 0 && (
+            <WarnBox>
+              <ul className="space-y-1">
+                {audioRefWarnings(refs).map((w) => (
+                  <li key={w}>⚠ {w}</li>
+                ))}
+              </ul>
+            </WarnBox>
+          )}
         </div>
       )}
       {busy && <p className="text-sm text-muted">Lade hoch …</p>}

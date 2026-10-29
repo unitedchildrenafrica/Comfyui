@@ -49,3 +49,23 @@ describe("H3 prompt", () => {
     expect(checkH3Prompt("(S1) says <d>hello", "", false).length).toBeGreaterThan(0);
   });
 });
+
+import { audioRefWarnings, usedSeconds } from "@/lib/h3refs";
+
+describe("Audio-Referenzen", () => {
+  const img = { kind: "image" as const, filename: "a.png" };
+  it("usedSeconds mit Start/Ende", () => {
+    expect(usedSeconds({ duration: 30 })).toBe(30);
+    expect(usedSeconds({ duration: 30, trimStart: 5, trimEnd: 12 })).toBe(7);
+    expect(usedSeconds({ trimEnd: 8 })).toBe(8);
+    expect(usedSeconds({})).toBeNull();
+  });
+  it("Warnungen", () => {
+    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 10 }])).toEqual([]);
+    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 30 }])[0]).toContain("höchstens 15");
+    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 1 }])[0]).toContain("mindestens 2");
+    expect(audioRefWarnings([{ kind: "audio", filename: "x.mp3", duration: 5 }])[0]).toContain("Referenzbild");
+    expect(audioRefWarnings([img, { kind: "audio", filename: "x", duration: 9 }, { kind: "audio", filename: "y", duration: 9 }]).at(-1)).toContain("zusammen");
+    expect(audioRefWarnings([img, { kind: "audio", filename: "x", duration: 20, trimStart: 5, trimEnd: 3 }])[0]).toContain("Ende");
+  });
+});

@@ -74,6 +74,8 @@ export interface H3Ref {
   filename: string;
   trimStart?: number;
   trimEnd?: number;
+  /** Länge der Datei in Sekunden (nur für die Anzeige/Prüfung in der App) */
+  duration?: number;
 }
 
 export interface H3Settings {

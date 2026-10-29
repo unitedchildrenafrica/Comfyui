@@ -10,6 +10,7 @@ import { H3_MAX_LORAS, h3PromptText } from "@/lib/builders/h3";
 import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
 import { H3_RESOLUTIONS, defaultH3Settings } from "@/lib/defaults";
 import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, parseH3Prompt } from "@/lib/h3prompt";
+import { audioRefWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
 
@@ -245,6 +246,9 @@ export function VideoForm() {
         </Field>
       </Section>
 
+      {s.mode === "REF2VA" && audioRefWarnings(s.refs).length > 0 && (
+        <WarnBox>Audio-Referenz prüfen (sonst bricht der Job ab): {audioRefWarnings(s.refs).join(" ")}</WarnBox>
+      )}
       {submitError && (
         <ErrorBox>
           {submitError.comfyDown ? "ComfyUI antwortet nicht – bitte gleich nochmal versuchen." : submitError.message}
