@@ -28,11 +28,15 @@ export default function GalleryPage() {
   const [kind, setKind] = useState<"all" | "image" | "video">("all");
   const [folder, setFolder] = useState("");
   const [open, setOpen] = useState<number | null>(null);
+  const [canDelete, setCanDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const touch = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setItems((await api<{ items: Item[] }>("/api/history?max=500")).items);
+      const r = await api<{ items: Item[]; canDelete?: boolean }>("/api/history?max=500");
+      setItems(r.items);
+      setCanDelete(!!r.canDelete);
       setError(null);
     } catch (err) {
       setError(err as ApiError);
@@ -148,7 +152,30 @@ export default function GalleryPage() {
               <img src={viewUrl(current)} alt={current.label} className="max-h-full max-w-full object-contain" />
             )}
           </div>
-          <div className="grid grid-cols-2 gap-2 p-3">
+          {deleteError && <p className="px-3 text-center text-sm text-red-300">{deleteError}</p>}
+          <div className={`grid gap-2 p-3 ${canDelete ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-2"}`}>
+            {canDelete && (
+              <button
+                type="button"
+                className="btn btn-danger px-3"
+                aria-label="Löschen"
+                onClick={async () => {
+                  if (!window.confirm(`„${current.filename}“ wirklich vom Pod löschen?`)) return;
+                  setDeleteError(null);
+                  try {
+                    await api(`/api/files?${new URLSearchParams({ filename: current.filename, subfolder: current.subfolder })}`, { method: "DELETE" });
+                    const gone = current;
+                    setItems((list) => (list ?? []).filter((i) => !(i.filename === gone.filename && i.subfolder === gone.subfolder)));
+                    // beim nächsten Bild bleiben bzw. schließen, wenn es das letzte war
+                    setOpen((o) => (o === null || shown.length <= 1 ? null : Math.min(o, shown.length - 2)));
+                  } catch (err) {
+                    setDeleteError((err as Error).message);
+                  }
+                }}
+              >
+                🗑
+              </button>
+            )}
             <a className="btn btn-ghost" href={viewUrl(current, { download: "1" })}>
               Download
             </a>

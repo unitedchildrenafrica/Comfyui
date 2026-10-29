@@ -49,6 +49,16 @@ function sendStatus() {
   send(null, "status", { status: { exec_info: { queue_remaining: queue.length + (running ? 1 : 0) } } });
 }
 
+// Optional wie echtes ComfyUI: Ausgaben wirklich in einen Ordner schreiben (für Galerie/ZIP/Löschen)
+const OUT_DIR = process.env.MOCK_OUTPUT_DIR;
+async function writeOutput(sub, name, data) {
+  if (!OUT_DIR) return;
+  const fs = await import("node:fs/promises");
+  const dir = `${OUT_DIR}/${sub}`;
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(`${dir}/${name}`, data);
+}
+
 function outputsFor(prompt) {
   const out = {};
   for (const [id, n] of Object.entries(prompt)) {
@@ -56,10 +66,14 @@ function outputsFor(prompt) {
       const prefix = String(n.inputs.filename_prefix);
       const sub = prefix.includes("/") ? prefix.slice(0, prefix.lastIndexOf("/")) : "";
       const base = prefix.split("/").pop();
-      out[id] = { images: [{ filename: `${base}_${String(++counter).padStart(5, "0")}_.png`, subfolder: sub, type: "output" }] };
+      const filename = `${base}_${String(++counter).padStart(5, "0")}_.png`;
+      writeOutput(sub, filename, PNG);
+      out[id] = { images: [{ filename, subfolder: sub, type: "output" }] };
     }
     if (n.class_type === "DaSiWa_EnhancedVideoCombine") {
-      out[id] = { gifs: [{ filename: `clip_${++counter}.mp4`, subfolder: "video/2026-10-28", type: "output", format: "video/h264-mp4" }] };
+      const filename = `clip_${++counter}.mp4`;
+      writeOutput("video/2026-10-28", filename, PREVIEW_MP4 ?? Buffer.alloc(16));
+      out[id] = { gifs: [{ filename, subfolder: "video/2026-10-28", type: "output", format: "video/h264-mp4" }] };
     }
   }
   return out;

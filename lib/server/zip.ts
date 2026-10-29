@@ -66,3 +66,15 @@ export async function listFolders(): Promise<string[]> {
   await walk(root, 1);
   return out.sort();
 }
+
+/** Einzelne Datei im Ausgabeordner, abgesichert gegen „..“ und Pfade im Dateinamen. */
+export function resolveOutputFile(subfolder: string, filename: string): string | null {
+  const dir = resolveOutputFolder(subfolder);
+  if (!dir || !filename || filename !== path.basename(filename) || filename.startsWith(".") || !MEDIA.test(filename)) return null;
+  return path.join(dir, filename);
+}
+
+/** Gibt es den Ausgabeordner auf diesem Rechner? (Nur dann kann die App Dateien prüfen/löschen.) */
+export async function outputDirAvailable(): Promise<boolean> {
+  return fs.stat(config.outputDir).then((s) => s.isDirectory(), () => false);
+}

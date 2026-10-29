@@ -36,3 +36,17 @@ describe("parseHistory", () => {
     expect(e.durationMs).toBeNull();
   });
 });
+
+import { resolveOutputFile } from "@/lib/server/zip";
+
+describe("resolveOutputFile", () => {
+  it("nur Mediendateien im Ausgabeordner", () => {
+    process.env.OUTPUT_DIR = "/out";
+    expect(resolveOutputFile("video/2026-10-29", "clip_1.mp4")).toBe("/out/video/2026-10-29/clip_1.mp4");
+    expect(resolveOutputFile("", "bild_00001_.png")).toBe("/out/bild_00001_.png");
+    expect(resolveOutputFile("../etc", "x.png")).toBeNull();
+    expect(resolveOutputFile("wai", "../x.png")).toBeNull();
+    expect(resolveOutputFile("wai", "passwd")).toBeNull();
+    expect(resolveOutputFile("wai", ".hidden.png")).toBeNull();
+  });
+});
