@@ -77,6 +77,7 @@ export function defaultH3Settings(): H3Settings {
     fullPrompt: "",
     noDialogue: true,
     refs: [],
+    clipName: "",
   };
 }
 

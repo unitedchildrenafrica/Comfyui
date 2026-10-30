@@ -11,7 +11,7 @@ import { useOptions } from "@/hooks/useOptions";
 import { H3_MAX_LORAS, h3PromptText } from "@/lib/builders/h3";
 import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
 import { H3_RESOLUTIONS, defaultH3Settings } from "@/lib/defaults";
-import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, parseH3Prompt } from "@/lib/h3prompt";
+import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, nextClipName, parseH3Prompt, safeClipName, splitClipName } from "@/lib/h3prompt";
 import { audioRefWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
@@ -59,16 +59,26 @@ export function VideoForm() {
   const resId = H3_RESOLUTIONS.findIndex((r) => r.width === s.width && r.height === s.height);
   const tooManyImages = s.refs.filter((r) => r.kind === "image").length > imageLimit(s.mode);
 
-  const pasteFull = (text: string) => {
+  const pasteFull = (raw: string) => {
+    // Erste Zeile „Clip 35“ o. Ä. wird zum Dateinamen und nicht Teil des Prompts
+    const { name, text } = splitClipName(raw);
+    const named = name ? ` Clip-Name „${name}“ übernommen.` : " Keine Clip-Zeile oben – Dateiname nach Uhrzeit.";
     const blocks = parseH3Prompt(text);
     if (blocks) {
-      set({ blocks, fullPrompt: text, promptInput: "blocks" });
-      setPasteInfo("Blöcke erkannt und verteilt.");
+      set({ blocks, fullPrompt: text, promptInput: "blocks", clipName: name });
+      setPasteInfo(`Blöcke erkannt und verteilt.${named}`);
     } else {
-      set({ fullPrompt: text, promptInput: "full" });
-      setPasteInfo(isRef ? "Keine vollständigen Blöcke erkannt – Text steht unverändert unter „Kompletten Prompt einfügen“." : null);
+      set({ fullPrompt: text, promptInput: "full", clipName: name });
+      setPasteInfo(isRef ? `Keine vollständigen Blöcke erkannt – Text steht unverändert unter „Kompletten Prompt einfügen“.${named}` : name ? named.trim() : null);
     }
   };
+  /** Ganzer Prompt (evtl. mit Clip-Zeile) statt nur ein Block? */
+  const isFullPrompt = (raw: string) => {
+    const { text } = splitClipName(raw);
+    return !!parseH3Prompt(text) && (text.match(/^\s*[a-z_]+\s*:/gim)?.length ?? 0) >= 3;
+  };
+  const clipFile = safeClipName(s.clipName ?? "");
+  const nextClip = nextClipName(s.clipName ?? "");
 
   const generate = async () => {
     setSubmitting(true);
@@ -136,6 +146,24 @@ export function VideoForm() {
           </button>
         </div>
         <PasteButton block label="📋 Prompt aus Zwischenablage einfügen (ersetzt alles)" onPaste={pasteFull} />
+        <Field
+          label="Clip-Name"
+          hint={clipFile ? `Datei: ${clipFile}_00001.mp4 (beim nächsten Mal _00002 …)` : "Leer = Datei nach Uhrzeit. Steht über dem Prompt eine Zeile wie „Clip 35“, wird sie hier automatisch übernommen."}
+        >
+          <div className="flex gap-2">
+            <input className="input flex-1" value={s.clipName ?? ""} onChange={(e) => set({ clipName: e.target.value })} placeholder="z. B. Clip 35" />
+            {nextClip && (
+              <button type="button" className="btn btn-ghost px-3 text-sm" onClick={() => set({ clipName: nextClip })} title={nextClip}>
+                +1
+              </button>
+            )}
+            {s.clipName && (
+              <button type="button" className="btn btn-ghost px-3" aria-label="Clip-Name leeren" onClick={() => set({ clipName: "" })}>
+                ✕
+              </button>
+            )}
+          </div>
+        </Field>
         {isRef && (
           <Segmented
             value={s.promptInput}
@@ -156,7 +184,7 @@ export function VideoForm() {
                   label="📋"
                   onPaste={(t) =>
                     // Ganzer Prompt in der Zwischenablage → auf alle Blöcke verteilen, sonst nur diesen Block ersetzen
-                    parseH3Prompt(t) && (t.match(/^\s*[a-z_]+\s*:/gim)?.length ?? 0) >= 3 ? pasteFull(t) : set({ blocks: { ...s.blocks, [key]: t } })
+                    isFullPrompt(t) ? pasteFull(t) : set({ blocks: { ...s.blocks, [key]: t } })
                   }
                 />
               }
@@ -168,7 +196,7 @@ export function VideoForm() {
                 onPaste={(e) => {
                   // Ganzen Prompt in ein Feld eingefügt? → automatisch verteilen
                   const text = e.clipboardData.getData("text");
-                  if (parseH3Prompt(text) && (text.match(/^\s*[a-z_]+\s*:/gim)?.length ?? 0) >= 3) {
+                  if (isFullPrompt(text)) {
                     e.preventDefault();
                     pasteFull(text);
                   }

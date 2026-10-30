@@ -1,5 +1,5 @@
 import template from "@/workflows/MiniMaxH3WF.json";
-import { buildH3Prompt } from "../h3prompt";
+import { buildH3Prompt, safeClipName } from "../h3prompt";
 import type { H3Settings } from "../types";
 import { type ApiWorkflow, assertValid, clone, node, removeNodes } from "./common";
 
@@ -112,6 +112,9 @@ export function buildWorkflow({ settings: s, seed }: H3JobInput): ApiWorkflow {
     node(wf, "1512:2592").inputs.model = ["2678", 0];
   }
   node(wf, "2568").inputs.quality = s.quality;
+  // Clip-Name als Dateiname (der Video-Node hängt _00001, _00002 … an), Ordner bleibt nach Datum
+  const clip = safeClipName(s.clipName ?? "");
+  if (clip) node(wf, "2568").inputs.filename_prefix = `video/%date:yyyy-MM-dd%/${clip}`;
   // „Auto“ wählt bei DaSiWa zuerst AV1 – das importiert die iPhone-Fotos-App nicht.
   // Deshalb standardmäßig H.264 8-bit mit AAC in MP4 (Werte aus _CODEC_OPTIONS usw.).
   if (s.videoCodec !== "Auto") {

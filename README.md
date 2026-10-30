@@ -182,6 +182,12 @@ workflows/          API-Exporte (Templates)
 pod/start-frontend.sh
 ```
 
+### Video-Clips automatisch benennen
+
+Steht in der **ersten Zeile** des eingefügten Prompts z. B. `Clip 35`, wird daraus der Dateiname (`video/<Datum>/Clip_35_00001.mp4`, bei erneutem Rendern `_00002` …) und der Name in der Galerie. Die Zeile gehört nicht zum Prompt. Erkannt werden `Clip 35`, `Clip #35`, `Szene 3`, `Shot 12`, `Name: …`, auch mit Markdown (`**Clip 35**`) oder im Code-Block, und jede kurze Zeile direkt über den Blöcken. Ohne solche Zeile bleibt es beim Namen nach Uhrzeit. Das Feld „Clip-Name“ lässt sich auch von Hand setzen, „+1“ zählt die Nummer hoch.
+
+Anweisung für Claude, z. B.: *„Schreib in die allererste Zeile nur `Clip <Nummer>`, danach eine Leerzeile und dann den Prompt mit den Blöcken.“*
+
 ### MiniMax H3: Wie Prompt und Referenzen übergeben werden
 
 Ermittelt aus dem Quellcode von `ComfyUI-DaSiWa-Nodes` (`nodes/nodes_minimax_h3_director.py`):

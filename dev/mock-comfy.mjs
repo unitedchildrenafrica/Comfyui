@@ -71,9 +71,16 @@ function outputsFor(prompt) {
       out[id] = { images: [{ filename, subfolder: sub, type: "output" }] };
     }
     if (n.class_type === "DaSiWa_EnhancedVideoCombine") {
-      const filename = `clip_${++counter}.mp4`;
-      writeOutput("video/2026-10-28", filename, PREVIEW_MP4 ?? Buffer.alloc(16));
-      out[id] = { gifs: [{ filename, subfolder: "video/2026-10-28", type: "output", format: "video/h264-mp4" }] };
+      // Wie der echte Node: %date:…%-Platzhalter auflösen, Zähler anhängen
+      const now = new Date();
+      const pad = (v) => String(v).padStart(2, "0");
+      const prefix = String(n.inputs.filename_prefix ?? "video/clip")
+        .replace(/%date:yyyy-MM-dd%/g, `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`)
+        .replace(/%date:hhmmss%/g, `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`);
+      const sub = prefix.includes("/") ? prefix.slice(0, prefix.lastIndexOf("/")) : "";
+      const filename = `${prefix.split("/").pop()}_${String(++counter).padStart(5, "0")}.mp4`;
+      writeOutput(sub, filename, PREVIEW_MP4 ?? Buffer.alloc(16));
+      out[id] = { gifs: [{ filename, subfolder: sub, type: "output", format: "video/h264-mp4" }] };
     }
   }
   return out;

@@ -105,6 +105,8 @@ export interface H3Settings {
   fullPrompt: string;
   noDialogue: boolean;
   refs: H3Ref[];
+  /** Clip-Name für die Datei (z. B. „Clip 35“ → Clip_35_00001.mp4), leer = Datum/Uhrzeit */
+  clipName?: string;
 }
 
 export interface JobRecord {

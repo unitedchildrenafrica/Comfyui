@@ -64,6 +64,58 @@ export function parseH3Prompt(text: string): H3Blocks | null {
   return blocks;
 }
 
+// --- Clip-Name aus der ersten Zeile ---------------------------------------------------
+
+/** „Clip 35“, „Clip #44“, „Szene 3b“, „Shot_12“ … */
+const CLIP_LINE = /^(clip|szene|scene|shot|teil|part)\s*[#_\-.:]?\s*\d+[\w\- ]{0,40}$/i;
+/** „Name: …“, „Titel: …“, „Clip: …“ */
+const NAMED_LINE = /^(name|titel|title|clip|dateiname|filename)\s*:\s*(.{1,80})$/i;
+
+/** Markdown-Reste entfernen, die Claude gern um eine Zeile setzt (# **Clip 35** `…`) */
+const plainLine = (line: string) => line.trim().replace(/^#+\s*/, "").replace(/^[*_`]+|[*_`]+$/g, "").trim();
+
+/**
+ * Erste Zeile als Clip-Name abtrennen. Erkannt wird sie, wenn sie wie „Clip 35“ oder
+ * „Name: …“ aussieht – oder (nur wenn danach die Blöcke kommen) jede kurze erste Zeile.
+ * Code-Zäune (```) um den ganzen Text werden dabei mit entfernt.
+ */
+export function splitClipName(raw: string): { name: string; text: string } {
+  let text = raw.replace(/\r\n/g, "\n");
+  const fenced = text.trim().match(/^```[^\n]*\n([\s\S]*?)\n```$/);
+  if (fenced) text = fenced[1];
+  const lines = text.split("\n");
+  const first = lines.findIndex((l) => l.trim());
+  if (first < 0) return { name: "", text };
+  const line = plainLine(lines[first]);
+  const rest = lines.slice(first + 1).join("\n");
+  if (CLIP_LINE.test(line)) return { name: line.replace(/^(\w+)\s*[:#]\s*/, "$1 "), text: rest.trim() };
+  const named = line.match(NAMED_LINE);
+  if (named) return { name: plainLine(named[2]), text: rest.trim() };
+  // Beliebige kurze Zeile vor den Blöcken (aber selbst keine Block-Überschrift)
+  const isHeading = new RegExp(HEADING_RE.source, "im").test(lines[first]);
+  if (!isHeading && line.length <= 60 && !line.includes(":") && parseH3Prompt(rest)) return { name: line, text: rest.trim() };
+  return { name: "", text: raw };
+}
+
+/** Dateisicherer Name: „Clip 35 – Pool“ → „Clip_35_-_Pool“ */
+export function safeClipName(name: string): string {
+  return name
+    .normalize("NFC")
+    .replace(/[\\/:*?"<>|\u0000-\u001f%]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/^[._]+|_+$/g, "")
+    .slice(0, 80);
+}
+
+/** Zahl am Ende hochzählen: „Clip 35“ → „Clip 36“, „Clip_09“ → „Clip_10“ */
+export function nextClipName(name: string): string | null {
+  const m = name.match(/^(.*?)(\d+)(\D*)$/);
+  if (!m) return null;
+  const n = String(Number(m[2]) + 1).padStart(m[2].length, "0");
+  return `${m[1]}${n}${m[3]}`;
+}
+
 const DIALOGUE_TAG = /<d>|<\/d>|\(S\d+\)/i;
 const NO_DIALOGUE_PHRASE = /no dialogue,\s*no speech,\s*no voices/i;
 const DIALOGUE_LINE = /\(S\d+\)\s*<d>\[[A-Za-z]+\][^<]*<\/d>/;

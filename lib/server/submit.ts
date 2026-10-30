@@ -115,7 +115,7 @@ export async function submitVideoJob(settings: H3Settings) {
     generator: "h3",
     settings,
     seed,
-    label: (settings.blocks.summary || text).slice(0, 60) || "Video",
+    label: settings.clipName?.trim() || (settings.blocks.summary || text).slice(0, 60) || "Video",
     createdAt: Date.now(),
   });
   return { promptId, seed };
