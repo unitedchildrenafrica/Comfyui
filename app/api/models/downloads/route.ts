@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import type { ModelType } from "@/lib/modelLinks";
 import { badRequest } from "@/lib/server/http";
 import { cancelDownload, listDownloads, startDownload } from "@/lib/server/downloads";
+import { saveModelLinks } from "@/lib/server/modelRegistry";
 import { forwardToPodApp } from "@/lib/server/podForward";
 import { serverMode } from "@/lib/server/podLink";
 
@@ -12,12 +13,16 @@ export function GET(req: NextRequest) {
   return Response.json({ downloads: listDownloads() });
 }
 
-/** { items: [{ url, type, filename, sizeBytes }] } – jede Datei ein eigener Download */
+/** { items: [{ url, type, filename, sizeBytes, title? }] } – jede Datei ein eigener Download */
 export async function POST(req: NextRequest) {
-  if (serverMode()) return forwardToPodApp(req, "/api/models/downloads");
-  const { items } = (await req.json().catch(() => ({}))) as {
-    items?: { url: string; type: ModelType; filename: string; sizeBytes?: number | null }[];
-  };
+  const raw = await req.text();
+  let items: { url: string; type: ModelType; filename: string; sizeBytes?: number | null; title?: string }[] | undefined;
+  try {
+    items = (JSON.parse(raw) as { items?: typeof items }).items;
+  } catch {}
+  // Link merken, damit die Datei später (neuer Pod, gelöscht) wieder geladen werden kann
+  if (Array.isArray(items)) await saveModelLinks(items).catch(() => {});
+  if (serverMode()) return forwardToPodApp(req, "/api/models/downloads", raw);
   if (!items?.length) return badRequest("Keine Dateien gewählt");
   const errors: string[] = [];
   for (const item of items) {

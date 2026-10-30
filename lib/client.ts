@@ -34,6 +34,9 @@ export function viewUrl(f: { filename: string; subfolder: string; type?: string 
   return `/api/view?${qs}`;
 }
 
+/** localStorage-Schlüssel des Bild-Formulars (auch für „aus Bild-Formular übernehmen“) */
+export const IMAGE_FORM_KEY = "pf.image.v1";
+
 export function loadLocal<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);

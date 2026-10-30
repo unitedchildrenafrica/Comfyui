@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LoraList } from "@/components/LoraList";
 import { PasteButton } from "@/components/PasteButton";
@@ -9,8 +9,10 @@ import { ComfyDown, ErrorBox, Field, NodeErrors, NumberInput, Section, Segmented
 import { useOptions } from "@/hooks/useOptions";
 import { parseBatch, type BatchError } from "@/lib/batch";
 import { scaledSize } from "@/lib/builders/common";
-import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
+import { APPLY_EVENT, takePendingCharacter } from "@/lib/characterTools";
+import { api, ApiError, IMAGE_FORM_KEY, loadLocal, saveLocal } from "@/lib/client";
 import { ASPECTS, DEFAULT_NEGATIVE, UPSCALE_FACTORS, defaultImageSettings } from "@/lib/defaults";
+import { type Character, findAvailable } from "@/lib/notes";
 import type { ImageGenerator, ImageSettings, JobRecord } from "@/lib/types";
 
 const GENERATORS: { value: ImageGenerator; label: string }[] = [
@@ -22,7 +24,7 @@ const GENERATORS: { value: ImageGenerator; label: string }[] = [
 type AllSettings = Record<ImageGenerator, ImageSettings>;
 type Presets = Record<string, ImageSettings>;
 
-const STORAGE_KEY = "pf.image.v1";
+const STORAGE_KEY = IMAGE_FORM_KEY;
 
 function initialAll(): AllSettings {
   return { wai: defaultImageSettings("wai"), pony: defaultImageSettings("pony"), anima: defaultImageSettings("anima") };
@@ -83,6 +85,39 @@ export function ImageForm() {
     api<typeof appDefaults>("/api/app-settings").then(setAppDefaults).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Charakter aus der Bibliothek übernehmen (Notizen → „Ins Bild-Formular“)
+  const [charNotice, setCharNotice] = useState<string | null>(null);
+  const loraOptions = useRef<string[]>([]);
+  loraOptions.current = options?.loras ?? [];
+  useEffect(() => {
+    if (!loaded) return;
+    const apply = (c: Character | null) => {
+      if (!c) return;
+      const g = c.generator;
+      setGenerator(g);
+      setAll((a) => ({
+        ...a,
+        [g]: {
+          ...a[g],
+          promptMode: "single",
+          positive: c.positive || a[g].positive,
+          negative: c.negative || a[g].negative,
+          ...(c.checkpoint && g !== "anima" ? { checkpoint: c.checkpoint } : {}),
+          // Ohne LoRAs im Charakter bleiben die bisherigen stehen
+          ...(c.loras.length
+            ? { loras: c.loras.map((l) => ({ name: findAvailable(l.name, loraOptions.current) ?? l.name, strength: l.strength, enabled: true })) }
+            : {}),
+        },
+      }));
+      setCharNotice(`„${c.name}“ übernommen`);
+      setTimeout(() => setCharNotice(null), 4000);
+    };
+    apply(takePendingCharacter());
+    const onApply = () => apply(takePendingCharacter());
+    window.addEventListener(APPLY_EVENT, onApply);
+    return () => window.removeEventListener(APPLY_EVENT, onApply);
+  }, [loaded]);
 
   useEffect(() => {
     if (loaded) saveLocal(STORAGE_KEY, { generator, all, lastSeed });
@@ -146,6 +181,7 @@ export function ImageForm() {
   return (
     <main className="page">
       <Segmented value={generator} options={GENERATORS} onChange={setGenerator} />
+      {charNotice && <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">✓ Charakter {charNotice}</p>}
 
       {optError && (optError instanceof ApiError && optError.comfyDown ? <ComfyDown onRetry={reload} /> : <ErrorBox>{optError.message}</ErrorBox>)}
 

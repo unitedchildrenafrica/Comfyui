@@ -92,9 +92,26 @@ Nach einem Pod-Neustart reicht: `bash /workspace/start_comfy.sh` und `bash /work
 
 Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und speichert nach `MODELS_DIR` (Standard `/workspace/ComfyUI/models`). Vorhandene Dateien werden nicht überschrieben; abgebrochene Downloads setzen beim nächsten Versuch fort.
 
+**Früher geladen:** Jede Datei, die einmal hierüber kam, behält ihren Download-Link (ohne Token, in `DATA_DIR/model-links.json`). Fehlt sie auf dem Pod – gelöscht oder frischer Pod –, steht sie unter „Früher geladen“ mit **⬇ Neu laden** (bzw. „Alle fehlenden neu laden“). Sie kommt unter demselben Dateinamen zurück, damit Presets und Charaktere weiter passen.
+
 ### 6. Ganze Ordner als ZIP
 
 In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **„📦 Ordner als ZIP“**. Die App packt alle Bilder/Videos des Ordners (inkl. Unterordner) direkt aus dem ComfyUI-Ausgabeordner (`OUTPUT_DIR`, Standard `/workspace/ComfyUI/output`). Damit sind auch große Batches komplett dabei. „Alle Ordner“ lädt alles.
+
+### 6b. Notizen (Aufträge, Posten, Charaktere …)
+
+Am PC/Mac steht links eine Notizen-Leiste (Breite am Rand ziehen, Doppelklick = Standardbreite, „einklappen“ blendet sie aus). Am Handy ist es der Tab **📝 Notizen**. Gespeichert wird in `DATA_DIR/notes/` – im Server-Modus also auf dem eigenen Server, unabhängig vom Pod.
+
+- **Aufträge:** Person, Charakter/Set, Bild oder Video, Status *Offen → In Arbeit → Zu schicken → Verschickt*, optional Deadline, „bezahlt“, Notiz
+- **Schicken:** alles „Zu schicken“ nach Person gruppiert, „✓ alle an …“, „Alles verschickt“, „Liste kopieren“
+- **Posten:** Unreleased → Zu posten → Gepostet, mit Tier, Datum und Post-Text zum Kopieren
+- **Ideen:** Charakter-Ideen und Wünsche von Patrons, ▲ zählt Wünsche hoch
+- **Charaktere:** Prompt, LoRAs (mit Stärke und Download-Link) und Checkpoint; „Ins Bild-Formular“ setzt alles ein. Fehlt eine LoRA auf dem Pod, gibt es „⬇ laden“
+- **Monat:** wiederkehrende Aufgaben, die Haken gelten nur für den laufenden Monat
+- **Befehle:** Schnipsel mit Kopier-Knopf
+- **Notiz:** freies Textfeld, speichert automatisch; bei gleichzeitiger Änderung auf zwei Geräten wird gefragt statt überschrieben
+
+Oben stehen die Zähler (offen / zu schicken / unreleased / zu posten), die Suche geht über alle Listen.
 
 ### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
 

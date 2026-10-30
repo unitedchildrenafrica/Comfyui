@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorBox, Field, ProgressBar, Select, WarnBox } from "@/components/ui";
+import { useOptions } from "@/hooks/useOptions";
+import { redownload } from "@/lib/characterTools";
 import { api, ApiError } from "@/lib/client";
+import { findAvailable } from "@/lib/notes";
+import type { Options } from "@/lib/server/options";
 import { MODEL_TYPES, type ModelType } from "@/lib/modelLinks";
 import type { DownloadJob, Resolved, ResolvedFile } from "@/lib/server/downloads";
 
@@ -13,6 +17,113 @@ const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6
 
 interface Choice extends ResolvedFile {
   selected: boolean;
+}
+
+interface ModelLink {
+  filename: string;
+  type: ModelType;
+  url: string;
+  title?: string;
+  savedAt: number;
+}
+
+/** Liste des Pods zum Typ – null, wenn es keine gibt (dann ist der Status unbekannt) */
+function podList(o: Options | null, type: ModelType): string[] | null {
+  if (!o) return null;
+  const map: Partial<Record<ModelType, string[]>> = {
+    checkpoint: o.checkpoints,
+    lora: o.loras,
+    unet: o.unets,
+    vae: o.vaes,
+    text_encoder: o.clips,
+    upscaler: o.upscalers,
+  };
+  return map[type] ?? null;
+}
+
+/** Merkliste: einmal geladene Dateien mit Link – fehlende mit einem Tipp neu laden. */
+function SavedLinks({ onStarted }: { onStarted: () => void }) {
+  const { options, reload } = useOptions();
+  const [links, setLinks] = useState<ModelLink[]>([]);
+  const [state, setState] = useState<Record<string, { busy?: boolean; ok?: boolean; error?: string }>>({});
+  const [showAll, setShowAll] = useState(false);
+
+  const load = useCallback(() => {
+    api<{ links: ModelLink[] }>("/api/model-links").then((r) => setLinks(r.links), () => {});
+  }, []);
+  useEffect(load, [load]);
+
+  const status = (l: ModelLink) => {
+    const list = podList(options, l.type);
+    return list ? (findAvailable(l.filename, list) ? "here" : "missing") : "unknown";
+  };
+  const missing = links.filter((l) => status(l) === "missing" && !state[l.filename]?.ok);
+  const shown = showAll ? links : links.filter((l) => status(l) !== "here");
+
+  const get = async (l: ModelLink) => {
+    setState((s) => ({ ...s, [l.filename]: { busy: true } }));
+    try {
+      await redownload(l.filename, l.url, l.type);
+      setState((s) => ({ ...s, [l.filename]: { ok: true } }));
+      onStarted();
+    } catch (err) {
+      setState((s) => ({ ...s, [l.filename]: { error: (err as Error).message } }));
+    }
+  };
+  const forget = async (l: ModelLink) => {
+    if (!window.confirm(`Link für ${l.filename} vergessen?`)) return;
+    setLinks((await api<{ links: ModelLink[] }>(`/api/model-links?filename=${encodeURIComponent(l.filename)}`, { method: "DELETE" })).links);
+  };
+
+  if (!links.length) return null;
+  return (
+    <section className="card space-y-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">Früher geladen</h2>
+        <button type="button" className="text-xs text-accent underline" onClick={reload}>
+          ↻ prüfen
+        </button>
+      </div>
+      <p className="text-xs text-muted">
+        Jede Datei, die hier einmal geladen wurde, behält ihren Link. Fehlt sie auf dem Pod (gelöscht oder neuer Pod), lädt „Neu laden“ sie unter demselben Namen.
+      </p>
+      {missing.length > 1 && (
+        <button type="button" className="btn btn-primary w-full" onClick={() => missing.forEach(get)}>
+          ⬇ Alle fehlenden neu laden ({missing.length})
+        </button>
+      )}
+      {!shown.length && <p className="text-sm text-emerald-300">✓ Alles da.</p>}
+      <ul className="space-y-2">
+        {shown.map((l) => {
+          const st = status(l);
+          const s = state[l.filename];
+          return (
+            <li key={l.filename} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              <span className={st === "missing" ? "text-red-300" : st === "here" ? "text-emerald-300" : "text-muted"}>{st === "missing" ? "✗" : st === "here" ? "✓" : "•"}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {l.filename} <span className="text-xs text-muted">{MODEL_TYPES[l.type]?.folder}</span>
+              </span>
+              {st !== "here" &&
+                (s?.ok ? (
+                  <span className="text-xs text-emerald-300">läuft ↓</span>
+                ) : (
+                  <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs text-soft" disabled={s?.busy} onClick={() => get(l)}>
+                    {s?.busy ? "…" : "⬇ Neu laden"}
+                  </button>
+                ))}
+              <button type="button" className="h-9 w-8 text-muted" aria-label="Link vergessen" onClick={() => forget(l)}>
+                ✕
+              </button>
+              {s?.error && <span className="w-full text-xs text-red-300">{s.error}</span>}
+            </li>
+          );
+        })}
+      </ul>
+      <button type="button" className="w-full text-xs text-muted underline" onClick={() => setShowAll(!showAll)}>
+        {showAll ? "nur fehlende zeigen" : `alle zeigen (${links.length})`}
+      </button>
+    </section>
+  );
 }
 
 export default function ModelsPage() {
@@ -71,7 +182,7 @@ export default function ModelsPage() {
     try {
       const res = await api<{ downloads: DownloadJob[]; errors: string[] }>("/api/models/downloads", {
         method: "POST",
-        json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes })) },
+        json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes, title: resolved?.title })) },
       });
       setDownloads(res.downloads);
       setStartErrors(res.errors);
@@ -162,6 +273,8 @@ export default function ModelsPage() {
           </button>
         </section>
       )}
+
+      <SavedLinks onStarted={loadDownloads} />
 
       <section className="card space-y-3 p-4">
         <h2 className="font-semibold">Downloads</h2>

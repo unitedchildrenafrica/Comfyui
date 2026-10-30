@@ -8,6 +8,7 @@ const TABS = [
   { href: "/video", label: "Video", icon: "🎬" },
   { href: "/queue", label: "Queue", icon: "⏳" },
   { href: "/galerie", label: "Galerie", icon: "🗂️" },
+  { href: "/notizen", label: "Notizen", icon: "📝" },
   { href: "/einstellungen", label: "Setup", icon: "⚙️" },
 ];
 
@@ -15,7 +16,10 @@ export function BottomNav() {
   const path = usePathname();
   if (path.startsWith("/login")) return null;
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 backdrop-blur" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 backdrop-blur"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)", left: "var(--notes-w, 0px)" }}
+    >
       <ul className="mx-auto flex max-w-2xl">
         {TABS.map((t) => {
           const active = path.startsWith(t.href) || (t.href === "/einstellungen" && path.startsWith("/modelle"));

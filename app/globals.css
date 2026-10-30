@@ -26,6 +26,8 @@ html {
 }
 
 body {
+  /* Platz für die Notizen-Leiste am PC (wird von NotesSidebar gesetzt) */
+  padding-left: var(--notes-w, 0px);
   background: var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -70,5 +72,6 @@ body {
 
 .sticky-action {
   @apply fixed inset-x-0 z-30 mx-auto max-w-2xl px-3;
+  left: var(--notes-w, 0px);
   bottom: calc(3.75rem + env(safe-area-inset-bottom));
 }

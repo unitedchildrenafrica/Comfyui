@@ -6,7 +6,7 @@ import { getPodLink, podSecret } from "./podLink";
  * Dateien gehören auf den Pod), an die App auf dem Pod weiterreichen. Das Gateway leitet
  * /_app/… an sie weiter, das Pod-Geheimnis ersetzt dort den Login.
  */
-export async function forwardToPodApp(req: NextRequest, apiPath: string): Promise<Response> {
+export async function forwardToPodApp(req: NextRequest, apiPath: string, body?: string): Promise<Response> {
   const link = getPodLink();
   if (!link) return Response.json({ error: "Kein Pod verbunden – erst einen Pod starten." }, { status: 503 });
   const url = `${link.url}/_app${apiPath}${req.nextUrl.search}`;
@@ -17,7 +17,7 @@ export async function forwardToPodApp(req: NextRequest, apiPath: string): Promis
     const res = await fetch(url, {
       method: req.method,
       headers,
-      body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : (body ?? (await req.arrayBuffer())),
       signal: AbortSignal.timeout(60_000),
       cache: "no-store",
     });
