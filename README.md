@@ -94,6 +94,8 @@ Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und spe
 
 **Früher geladen:** Jede Datei, die einmal hierüber kam, behält ihren Download-Link (ohne Token, in `DATA_DIR/model-links.json`). Fehlt sie auf dem Pod – gelöscht oder frischer Pod –, steht sie unter „Früher geladen“ mit **⬇ Neu laden** (bzw. „Alle fehlenden neu laden“). Sie kommt unter demselben Dateinamen zurück, damit Presets und Charaktere weiter passen.
 
+**LoRAs für Bild und Video getrennt:** Bei „Bild“ stehen nur Bild-LoRAs zur Auswahl, bei „Video“ nur Video-LoRAs. Automatisch zugeordnet werden die LoRAs aus `pod/setup.sh`, Dateien in Unterordnern wie `loras/video/…` oder `loras/pony/…` und Namen mit „minimax“/„h3“. Beim Herunterladen einer LoRA fragt die App „für Bilder / für Videos“. Alles andere unter **Modelle laden → „LoRAs: Bild oder Video“** mit einem Tipp zuordnen (gespeichert in `DATA_DIR/lora-kinds.json`). Nicht zugeordnete erscheinen in beiden Listen.
+
 ### 6. Ganze Ordner als ZIP
 
 In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **„📦 Ordner als ZIP“**. Die App packt alle Bilder/Videos des Ordners (inkl. Unterordner) direkt aus dem ComfyUI-Ausgabeordner (`OUTPUT_DIR`, Standard `/workspace/ComfyUI/output`). Damit sind auch große Batches komplett dabei. „Alle Ordner“ lädt alles.

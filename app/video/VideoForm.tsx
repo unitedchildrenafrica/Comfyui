@@ -224,7 +224,7 @@ export function VideoForm() {
           <Select value={s.textEncoder} onChange={(v) => set({ textEncoder: v })} options={o?.clips ?? []} />
         </Field>
         <Field label="LoRAs">
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} max={H3_MAX_LORAS} />
+          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="video" use={o?.loraUse} max={H3_MAX_LORAS} />
         </Field>
       </Section>
 

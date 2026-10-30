@@ -273,7 +273,7 @@ export function ImageForm() {
           </>
         )}
         <Field label="LoRAs" hint={isAnima ? "Illustrious-/SDXL-LoRAs funktionieren nicht mit Anima." : undefined}>
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} />
+          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="image" use={o?.loraUse} />
         </Field>
       </Section>
 

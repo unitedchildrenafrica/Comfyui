@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useOptions } from "@/hooks/useOptions";
 import { redownload, sendCharacterToImageForm } from "@/lib/characterTools";
 import { api, IMAGE_FORM_KEY, loadLocal } from "@/lib/client";
+import { loraFits } from "@/lib/loraKinds";
 import { baseName, type Character, type CharacterLora, findAvailable, matches, newId } from "@/lib/notes";
 import type { ImageGenerator, ImageSettings } from "@/lib/types";
 import { Badge, Chips, Clamp, CopyButton, EditorFrame, Empty, Label, RowActions } from "./bits";
@@ -177,6 +178,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
     .filter((c) => matches("characters", c, query))
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
   const available = options?.loras ?? null;
+  const imageLoras = (options?.loras ?? []).filter((l) => loraFits(options?.loraUse?.[l]?.use, "image"));
 
   const linkFor = (l: CharacterLora) => l.url || links.find(l.name)?.url || null;
 
@@ -203,7 +205,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
   return (
     <div className="space-y-3">
       {editing && !editing.updatedAt ? (
-        <CharacterEditor initial={editing} notes={notes} loras={options?.loras ?? []} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />
+        <CharacterEditor initial={editing} notes={notes} loras={imageLoras} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />
       ) : (
         <button type="button" className="btn btn-primary w-full" onClick={() => setEditing(blank())}>
           + Charakter
@@ -220,7 +222,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
       {!list.length && <Empty>{query ? "Nichts gefunden." : "Speichere Charaktere mit Prompt, LoRAs und Modell – ein Tipp setzt alles ins Bild-Formular."}</Empty>}
       {list.map((c) => {
         if (editing?.id === c.id)
-          return <CharacterEditor key={c.id} initial={editing} notes={notes} loras={options?.loras ?? []} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />;
+          return <CharacterEditor key={c.id} initial={editing} notes={notes} loras={imageLoras} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />;
         const missing = available ? c.loras.filter((l) => !findAvailable(l.name, available)) : [];
         const loadable = missing.filter((l) => linkFor(l) && !dl[l.name]?.ok);
         return (

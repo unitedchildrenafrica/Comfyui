@@ -6,6 +6,7 @@ import { ErrorBox, Field, ProgressBar, Select, WarnBox } from "@/components/ui";
 import { useOptions } from "@/hooks/useOptions";
 import { redownload } from "@/lib/characterTools";
 import { api, ApiError } from "@/lib/client";
+import { classifyLora, guessUseFromBaseModel, type LoraUse } from "@/lib/loraKinds";
 import { findAvailable } from "@/lib/notes";
 import type { Options } from "@/lib/server/options";
 import { MODEL_TYPES, type ModelType } from "@/lib/modelLinks";
@@ -17,6 +18,8 @@ const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6
 
 interface Choice extends ResolvedFile {
   selected: boolean;
+  /** nur LoRAs: für Bilder oder Videos */
+  use: "image" | "video" | null;
 }
 
 interface ModelLink {
@@ -42,8 +45,7 @@ function podList(o: Options | null, type: ModelType): string[] | null {
 }
 
 /** Merkliste: einmal geladene Dateien mit Link – fehlende mit einem Tipp neu laden. */
-function SavedLinks({ onStarted }: { onStarted: () => void }) {
-  const { options, reload } = useOptions();
+function SavedLinks({ options, reload, onStarted }: { options: Options | null; reload: () => void; onStarted: () => void }) {
   const [links, setLinks] = useState<ModelLink[]>([]);
   const [state, setState] = useState<Record<string, { busy?: boolean; ok?: boolean; error?: string }>>({});
   const [showAll, setShowAll] = useState(false);
@@ -126,6 +128,93 @@ function SavedLinks({ onStarted }: { onStarted: () => void }) {
   );
 }
 
+const USE_CHIPS: { value: LoraUse; label: string }[] = [
+  { value: "image", label: "🖼️ Bild" },
+  { value: "video", label: "🎬 Video" },
+  { value: "both", label: "Beide" },
+];
+
+/** Jede LoRA einer Liste zuordnen – Bild-LoRAs erscheinen dann nicht mehr bei Video und umgekehrt. */
+function LoraSorter({ options }: { options: Options | null }) {
+  const [overrides, setOverrides] = useState<Record<string, LoraUse>>({});
+  const [filter, setFilter] = useState<"open" | "image" | "video" | "all">("open");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ overrides: Record<string, LoraUse> }>("/api/lora-kinds").then((r) => setOverrides(r.overrides), () => {});
+  }, []);
+  const loras = options?.loras ?? [];
+  if (!loras.length) return null;
+  const rows = loras.map((name) => ({ name, ...classifyLora(name, overrides) }));
+  const count = (f: typeof filter) => rows.filter((r) => (f === "open" ? !r.use : f === "all" ? true : r.use === f || r.use === "both")).length;
+  const shown = rows.filter((r) => (filter === "open" ? !r.use : filter === "all" ? true : r.use === filter || r.use === "both"));
+
+  const set = async (name: string, use: LoraUse | null) => {
+    setError(null);
+    try {
+      setOverrides((await api<{ overrides: Record<string, LoraUse> }>("/api/lora-kinds", { method: "PUT", json: { items: [{ name, use }] } })).overrides);
+    } catch (err) {
+      setError((err as ApiError).message);
+    }
+  };
+
+  return (
+    <section id="loras" className="card scroll-mt-4 space-y-3 p-4">
+      <h2 className="font-semibold">LoRAs: Bild oder Video</h2>
+      <p className="text-xs text-muted">
+        Bei „Bild“ stehen nur Bild-LoRAs zur Auswahl, bei „Video“ nur Video-LoRAs. Bekannte LoRAs sind automatisch zugeordnet, nicht zugeordnete stehen in beiden Listen.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {(
+          [
+            ["open", "Nicht zugeordnet"],
+            ["image", "Bild"],
+            ["video", "Video"],
+            ["all", "Alle"],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setFilter(v)}
+            className={`min-h-9 rounded-full border px-3 text-sm ${filter === v ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
+          >
+            {label} ({count(v)})
+          </button>
+        ))}
+      </div>
+      {error && <ErrorBox>{error}</ErrorBox>}
+      {!shown.length && <p className="text-sm text-muted">{filter === "open" ? "✓ Alle LoRAs sind zugeordnet." : "Keine."}</p>}
+      <ul className="space-y-2">
+        {shown.map((r) => (
+          <li key={r.name} className="space-y-1.5 rounded-xl border border-line bg-bg p-2.5">
+            <p className="flex items-baseline gap-2 text-sm">
+              <span className="min-w-0 flex-1 break-all">{r.name.replace(/\.safetensors$/, "")}</span>
+              {r.use && r.auto && <span className="shrink-0 text-xs text-muted">automatisch</span>}
+              {!r.auto && (
+                <button type="button" className="shrink-0 text-xs text-muted underline" onClick={() => set(r.name, null)}>
+                  ↺ automatisch
+                </button>
+              )}
+            </p>
+            <div className="flex gap-1.5">
+              {USE_CHIPS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => set(r.name, c.value)}
+                  className={`min-h-9 flex-1 rounded-lg border text-sm ${r.use === c.value ? (r.auto ? "border-accent/60 text-accent" : "border-accent bg-accent text-white") : "border-line text-soft"}`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function ModelsPage() {
   const [url, setUrl] = useState("");
   const [resolved, setResolved] = useState<Resolved | null>(null);
@@ -134,6 +223,7 @@ export default function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [startErrors, setStartErrors] = useState<string[]>([]);
   const [downloads, setDownloads] = useState<DownloadJob[]>([]);
+  const { options, reload: reloadOptions } = useOptions();
 
   const loadDownloads = useCallback(async () => {
     try {
@@ -162,7 +252,7 @@ export default function ModelsPage() {
       setResolved(r);
       // Bei mehreren Dateien nur die Haupt-Datei vorauswählen – außer bei Anima (Modell + Encoder + VAE)
       const many = r.files.length > 1 && !/anima/i.test(r.baseModel ?? "");
-      setChoices(r.files.map((f) => ({ ...f, selected: !many || f.primary })));
+      setChoices(r.files.map((f) => ({ ...f, selected: !many || f.primary, use: guessUseFromBaseModel(r.baseModel, f.filename) })));
     } catch (err) {
       setResolved(null);
       setError((err as ApiError).message);
@@ -177,12 +267,16 @@ export default function ModelsPage() {
       setError("Bitte bei jeder Datei auswählen, wohin sie gehört.");
       return;
     }
+    if (items.some((c) => c.type === "lora" && !c.use)) {
+      setError("Bitte bei der LoRA wählen: für Bilder oder für Videos.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const res = await api<{ downloads: DownloadJob[]; errors: string[] }>("/api/models/downloads", {
         method: "POST",
-        json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes, title: resolved?.title })) },
+        json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes, title: resolved?.title, use: c.type === "lora" ? c.use : undefined })) },
       });
       setDownloads(res.downloads);
       setStartErrors(res.errors);
@@ -255,6 +349,20 @@ export default function ModelsPage() {
                 <>
                   <Select value={c.type ?? ""} onChange={(v) => patch(i, { type: v as ModelType })} options={TYPE_OPTIONS} placeholder="Wohin? – auswählen –" />
                   <input className="input text-sm" value={c.filename} onChange={(e) => patch(i, { filename: e.target.value })} aria-label="Dateiname" />
+                  {c.type === "lora" && (
+                    <div className="flex gap-1.5">
+                      {(["image", "video"] as const).map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => patch(i, { use: u })}
+                          className={`min-h-10 flex-1 rounded-lg border text-sm ${c.use === u ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
+                        >
+                          {u === "image" ? "🖼️ für Bilder" : "🎬 für Videos"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -274,7 +382,9 @@ export default function ModelsPage() {
         </section>
       )}
 
-      <SavedLinks onStarted={loadDownloads} />
+      <SavedLinks options={options} reload={reloadOptions} onStarted={loadDownloads} />
+
+      <LoraSorter options={options} />
 
       <section className="card space-y-3 p-4">
         <h2 className="font-semibold">Downloads</h2>

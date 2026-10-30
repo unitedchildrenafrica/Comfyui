@@ -9,7 +9,7 @@ const PORT = Number(process.env.MOCK_PORT || 8188);
 const combo = (values) => [values];
 const NODES = {
   CheckpointLoaderSimple: { ckpt_name: combo(["wai_illustrious_v10.safetensors", "wai_illustrious_v17.safetensors", "ponyDiffusionV6XL.safetensors"]) },
-  LoraLoader: { lora_name: combo(["detail_slider.safetensors", "style_a.safetensors"]) },
+  LoraLoader: { lora_name: combo((process.env.MOCK_LORAS || "detail_slider.safetensors,style_a.safetensors").split(",")) },
   VAELoader: { vae_name: combo(["sdxl_vae.safetensors", "qwen_image_vae.safetensors", "MiniMaxH3/minimax_h3_video_vae_fp16.safetensors", "MiniMaxH3/minimax_h3_audio_vae_fp32.safetensors"]) },
   UpscaleModelLoader: { model_name: combo(["4x_foolhardy_Remacri.pth", "4x-UltraSharp.pth"]) },
   KSampler: { sampler_name: combo(["euler", "euler_ancestral", "dpmpp_2m"]), scheduler: combo(["normal", "karras", "simple"]) },

@@ -1,4 +1,6 @@
+import { classifyLora, type LoraUse } from "../loraKinds";
 import { comboValues, getNodeInfo } from "./comfy";
+import { getLoraOverrides } from "./loraKinds";
 
 export const H3_REQUIRED_NODES = [
   "MiniMaxH3Director",
@@ -13,6 +15,8 @@ export const H3_REQUIRED_NODES = [
 export interface Options {
   checkpoints: string[];
   loras: string[];
+  /** Bild / Video / beide pro LoRA, null = noch nicht zugeordnet */
+  loraUse: Record<string, { use: LoraUse | null; auto: boolean }>;
   vaes: string[];
   upscalers: string[];
   samplers: string[];
@@ -54,10 +58,13 @@ export async function getOptions(): Promise<Options> {
   ];
   const infos = await Promise.all(names.map((n) => getNodeInfo(n)));
   const info = Object.fromEntries(names.map((n, i) => [n, infos[i]]));
+  const loras = comboValues(info.LoraLoader, "lora_name");
+  const overrides = await getLoraOverrides();
 
   return {
     checkpoints: comboValues(info.CheckpointLoaderSimple, "ckpt_name"),
-    loras: comboValues(info.LoraLoader, "lora_name"),
+    loras,
+    loraUse: Object.fromEntries(loras.map((l) => [l, classifyLora(l, overrides)])),
     vaes: comboValues(info.VAELoader, "vae_name"),
     upscalers: comboValues(info.UpscaleModelLoader, "model_name"),
     samplers: comboValues(info.KSampler, "sampler_name"),
