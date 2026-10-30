@@ -4,7 +4,7 @@ import { ComfyPromptError, ComfyUnavailableError } from "./comfy";
 /** Einheitliche Fehlerantwort für alle API-Routen. */
 export function errorResponse(err: unknown) {
   if (err instanceof ComfyUnavailableError) {
-    return NextResponse.json({ error: "ComfyUI antwortet nicht", code: "comfy_unavailable" }, { status: 503 });
+    return NextResponse.json({ error: err.message, code: "comfy_unavailable" }, { status: 503 });
   }
   if (err instanceof ComfyPromptError) {
     return NextResponse.json(

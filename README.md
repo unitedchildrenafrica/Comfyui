@@ -96,6 +96,38 @@ Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und spe
 
 In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **„📦 Ordner als ZIP“**. Die App packt alle Bilder/Videos des Ordners (inkl. Unterordner) direkt aus dem ComfyUI-Ausgabeordner (`OUTPUT_DIR`, Standard `/workspace/ComfyUI/output`). Damit sind auch große Batches komplett dabei. „Alle Ordner“ lädt alles.
 
+### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
+
+Die App läuft dann **immer** auf deinem Server unter `https://comfy.comfyusel.uk`, auch ohne Pod. Der GPU-Pod rechnet nur und meldet sich beim Start selbst an. Fertige Bilder und Videos werden **automatisch auf den Server kopiert**. Galerie, Favoriten, ZIP und Löschen funktionieren deshalb auch, wenn gerade kein Pod läuft. „Modelle laden“ wird an den Pod weitergereicht.
+
+```
+Handy ──► comfy.comfyusel.uk ──► Server (App, Galerie, Bots)
+                                    │  Pod meldet sich an (POD_SECRET)
+                                    ▼
+                    Pod-Gateway (prüft POD_SECRET) ──► ComfyUI / Pod-App
+```
+
+**1. Auf dem Server** (Ubuntu 24.04, als root):
+
+```bash
+curl -fsSL -H "Authorization: Bearer DEIN_GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/server/setup-server.sh?ref=main" -o /root/setup-server.sh && bash /root/setup-server.sh
+```
+
+Beim ersten Mal fragt das Skript nach GitHub-Token, App-Passwort und dem bisherigen `CF_TUNNEL_TOKEN`. Am Ende zeigt es das **POD_SECRET** an. Es richtet App und Tunnel als systemd-Dienste ein: Start beim Booten, Neustart bei Absturz, max. 1,5 GB RAM, damit Platz für die Bots bleibt. **Update:** `bash /root/setup-server.sh` erneut ausführen.
+
+**2. Im Vast-Template:**
+- **eintragen:** `VPS_URL=https://comfy.comfyusel.uk` und `POD_SECRET=…` (aus Schritt 1)
+- **entfernen:** `CF_TUNNEL_TOKEN`. Der Tunnel läuft jetzt auf dem Server. Läuft er zusätzlich noch auf einem Pod, verteilt Cloudflare die Anfragen auf beide.
+
+**3. Pod starten wie gewohnt** (`setup.sh bilder|video|alles`). Statt App-Tunnel startet der Pod dann:
+- das **Gateway** (`pod/pod-gateway.mjs`, lässt nur Anfragen mit POD_SECRET durch)
+- einen Tunnel mit Zufalls-Adresse
+- ein **Lebenszeichen** an den Server, jede Minute
+
+In der App zeigt **Setup → Server-Modus**, ob ein Pod verbunden ist. Optional geht statt der Zufalls-Adresse ein fester zweiter Tunnel: `CF_GPU_TUNNEL_TOKEN` + `GPU_PUBLIC_URL`.
+
+Logs auf dem Server: `journalctl -u pod-frontend -f`. Auf dem Pod: `/workspace/logs/gateway.log`, `heartbeat.log`.
+
 ---
 
 ## Release / Deployment

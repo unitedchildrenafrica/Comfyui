@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import type { NextRequest } from "next/server";
 import { badRequest } from "@/lib/server/http";
+import { forgetMirrored } from "@/lib/server/mirror";
+import { serverMode } from "@/lib/server/podLink";
 import { removeFavorite } from "@/lib/server/store";
 import { outputDirAvailable, resolveOutputFile } from "@/lib/server/zip";
 
@@ -17,6 +19,8 @@ export async function DELETE(req: NextRequest) {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") return badRequest(`Löschen fehlgeschlagen: ${(err as Error).message}`);
   }
-  await removeFavorite({ filename: p.get("filename") ?? "", subfolder: p.get("subfolder") ?? "" });
+  const ref = { filename: p.get("filename") ?? "", subfolder: p.get("subfolder") ?? "" };
+  await removeFavorite(ref);
+  if (serverMode()) await forgetMirrored(ref);
   return Response.json({ ok: true });
 }

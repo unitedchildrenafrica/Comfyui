@@ -16,6 +16,13 @@
 #   MODELS_DIR          optional, Standard: /workspace/ComfyUI/models („Modelle laden“ in der App)
 #   OUTPUT_DIR          optional, Standard: /workspace/ComfyUI/output (ZIP-Download in der Galerie)
 #   CIVITAI_TOKEN, HF_TOKEN  optional – damit die App Modelle per Link laden kann
+#
+# Server-Modus (App läuft dauerhaft auf eigenem Server, Pod rechnet nur):
+#   VPS_URL             z. B. https://comfy.comfyusel.uk – dort meldet sich der Pod an
+#   POD_SECRET          gemeinsames Geheimnis mit dem Server (steht in /etc/pod-frontend.env)
+#   CF_GPU_TUNNEL_TOKEN optional – fester Tunnel für den Pod, sonst Zufalls-Adresse (Quick Tunnel)
+#   GPU_PUBLIC_URL      nur mit CF_GPU_TUNNEL_TOKEN, z. B. https://gpu.comfyusel.uk
+#   In diesem Modus wird CF_TUNNEL_TOKEN ignoriert (der Tunnel für die App läuft auf dem Server).
 set -euo pipefail
 
 GH_REPO="${GH_REPO:-unitedchildrenafrica/Comfyui}"
@@ -37,10 +44,23 @@ log() { echo "[pod-frontend] $(date '+%H:%M:%S') $*"; }
 # Pod-Leitungen wackeln manchmal (Connection reset) → Netzwerk-Aufrufe automatisch wiederholen
 CURL_NET=(--retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20)
 
-if [ -z "${APP_PASSWORD:-}" ]; then
-  log "FEHLER: APP_PASSWORD ist nicht gesetzt – ohne Passwort startet die App nicht."
-  exit 1
+AGENT=0
+if [ -n "${VPS_URL:-}" ] && [ -n "${POD_SECRET:-}" ]; then
+  AGENT=1
+  VPS_URL="${VPS_URL%/}"
+  log "Server-Modus: Pod meldet sich bei $VPS_URL an."
 fi
+
+if [ -z "${APP_PASSWORD:-}" ]; then
+  if [ "$AGENT" = 1 ]; then
+    # Im Server-Modus loggt sich niemand direkt auf dem Pod ein
+    APP_PASSWORD=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+  else
+    log "FEHLER: APP_PASSWORD ist nicht gesetzt – ohne Passwort startet die App nicht."
+    exit 1
+  fi
+fi
+POD_SECRET="${POD_SECRET:-}"
 
 export DEBIAN_FRONTEND=noninteractive
 apt_updated=0
@@ -126,7 +146,7 @@ pkill -f "node $APP_DIR/server.js" 2>/dev/null || true
 log "Starte App auf 127.0.0.1:$PORT …"
 (
   # Nur lokal lauschen – von außen ist die App ausschließlich über den Tunnel erreichbar
-  export APP_PASSWORD SESSION_SECRET COMFY_URL DATA_DIR MODELS_DIR OUTPUT_DIR CIVITAI_TOKEN HF_TOKEN PORT HOSTNAME=127.0.0.1 NODE_ENV=production
+  export APP_PASSWORD SESSION_SECRET COMFY_URL DATA_DIR MODELS_DIR OUTPUT_DIR CIVITAI_TOKEN HF_TOKEN POD_SECRET PORT HOSTNAME=127.0.0.1 NODE_ENV=production
   cd "$APP_DIR"
   while true; do
     echo "[$(date)] start" >> "$LOG_DIR/frontend.log"
@@ -137,6 +157,83 @@ log "Starte App auf 127.0.0.1:$PORT …"
 ) </dev/null >/dev/null 2>&1 &
 echo $! > "$RUN_DIR/frontend.pid"
 disown || true
+
+# --- Server-Modus: Gateway + Tunnel + Anmeldung beim Server ------------------------
+if [ "$AGENT" = 1 ]; then
+  GATEWAY_PORT="${GATEWAY_PORT:-18189}"
+  [ -n "${CF_TUNNEL_TOKEN:-}" ] && log "Hinweis: CF_TUNNEL_TOKEN wird ignoriert – der Tunnel für $PUBLIC_URL läuft jetzt auf dem Server."
+
+  stop_pid gateway
+  log "Starte Pod-Gateway auf 127.0.0.1:$GATEWAY_PORT …"
+  (
+    export POD_SECRET COMFY_URL GATEWAY_PORT APP_URL="http://127.0.0.1:$PORT"
+    while true; do
+      node "$APP_DIR/pod-gateway.mjs" >> "$LOG_DIR/gateway.log" 2>&1 || true
+      sleep 3
+    done
+  ) </dev/null >/dev/null 2>&1 &
+  echo $! > "$RUN_DIR/gateway.pid"
+
+  stop_pid tunnel
+  pkill -f "cloudflared tunnel" 2>/dev/null || true
+  : > "$LOG_DIR/tunnel.log"
+  if [ -n "${CF_GPU_TUNNEL_TOKEN:-}" ]; then
+    GPU_URL="${GPU_PUBLIC_URL:-}"
+    [ -z "$GPU_URL" ] && { log "FEHLER: GPU_PUBLIC_URL fehlt (z. B. https://gpu.comfyusel.uk)"; exit 1; }
+    log "Starte festen Pod-Tunnel → $GPU_URL"
+    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate run --token "$CF_GPU_TUNNEL_TOKEN")
+  else
+    GPU_URL=""
+    log "Starte Pod-Tunnel mit Zufalls-Adresse (Quick Tunnel) …"
+    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATEWAY_PORT")
+  fi
+  (
+    while true; do
+      "${TUNNEL_CMD[@]}" >> "$LOG_DIR/tunnel.log" 2>&1 || true
+      sleep 3
+    done
+  ) </dev/null >/dev/null 2>&1 &
+  echo $! > "$RUN_DIR/tunnel.pid"
+
+  # Lebenszeichen: alle 60 s anmelden (bis zur ersten Anmeldung alle 5 s). Bei Quick Tunnels
+  # wird jedes Mal die aktuelle Adresse aus dem Log genommen – auch nach einem Tunnel-Neustart.
+  stop_pid heartbeat
+  GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | tr -d '"' || true)
+  GPU_NAME="${GPU_NAME:-GPU}"
+  : > "$LOG_DIR/heartbeat.log"
+  (
+    export VPS_URL POD_SECRET GPU_URL GPU_NAME LOG_DIR
+    ok=0
+    while true; do
+      url="${GPU_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/tunnel.log" | tail -1)}"
+      if [ -n "$url" ] && curl -fsS -m 20 -X POST "$VPS_URL/api/pod/register" -H "x-pod-secret: $POD_SECRET" \
+          -H "content-type: application/json" -d "{\"url\":\"$url\",\"gpu\":\"$GPU_NAME\"}" >> "$LOG_DIR/heartbeat.log" 2>&1; then
+        echo " $(date '+%H:%M:%S') $url" >> "$LOG_DIR/heartbeat.log"
+        ok=1
+      fi
+      [ "$ok" = 1 ] && sleep 60 || sleep 5
+    done
+  ) </dev/null >/dev/null 2>&1 &
+  echo $! > "$RUN_DIR/heartbeat.pid"
+
+  CONNECTED=0
+  for _ in $(seq 1 36); do
+    grep -q '"ok":true' "$LOG_DIR/heartbeat.log" 2>/dev/null && { CONNECTED=1; break; }
+    sleep 5
+  done
+  if [ "$CONNECTED" = 1 ]; then
+    log "Pod ist beim Server angemeldet → $VPS_URL"
+    MSG="Pod verbunden mit ${VPS_URL} (${GPU_NAME})"
+  else
+    log "WARNUNG: Anmeldung beim Server noch nicht geklappt – läuft im Hintergrund weiter (Log: $LOG_DIR/heartbeat.log)"
+    MSG="Pod gestartet, aber noch nicht beim Server angemeldet (${GPU_NAME})"
+  fi
+  if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
+    curl -fsS -H "Content-Type: application/json" -d "{\"content\": \"${MSG//\"/\\\"}\"}" "$DISCORD_WEBHOOK_URL" >/dev/null || true
+  fi
+  log "Fertig. Logs: $LOG_DIR/frontend.log, $LOG_DIR/gateway.log, $LOG_DIR/tunnel.log, $LOG_DIR/heartbeat.log"
+  exit 0
+fi
 
 # --- 5. Auf ComfyUI warten --------------------------------------------------------
 if [ "$WAIT_FOR_COMFY" -gt 0 ]; then

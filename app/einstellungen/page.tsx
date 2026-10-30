@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [app, setApp] = useState<AppSettings | null>(null);
   const [presets, setPresets] = useState<Record<string, { generator: string }>>({});
   const [saved, setSaved] = useState(false);
+  const [pod, setPod] = useState<{ serverMode: boolean; online: boolean; link: { url: string; gpu?: string; registeredAt: number; lastSeen: number } | null } | null>(null);
 
   const check = useCallback(async () => {
     setStatusErr(null);
@@ -45,6 +46,7 @@ export default function SettingsPage() {
     check();
     api<AppSettings>("/api/app-settings").then(setApp).catch(() => {});
     api<typeof presets>("/api/presets").then(setPresets).catch(() => {});
+    api<typeof pod>("/api/pod").then(setPod).catch(() => {});
   }, [check]);
 
   const save = async () => {
@@ -102,6 +104,24 @@ export default function SettingsPage() {
           <button type="button" className="btn btn-ghost w-full" onClick={check}>
             Verbindung testen
           </button>
+        </section>
+      )}
+
+      {pod?.serverMode && (
+        <section className="card space-y-1 p-4 text-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Server-Modus</h2>
+            <span className={pod.online ? "text-emerald-400" : "text-amber-300"}>{pod.online ? "● Pod verbunden" : "○ kein Pod"}</span>
+          </div>
+          {pod.link ? (
+            <p className="text-muted">
+              {pod.link.gpu ?? "GPU-Pod"} · angemeldet {new Date(pod.link.registeredAt).toLocaleString("de-DE")} · zuletzt gemeldet{" "}
+              {new Date(pod.link.lastSeen).toLocaleTimeString("de-DE")}
+            </p>
+          ) : (
+            <p className="text-muted">Noch kein Pod angemeldet. Starte einen Pod mit VPS_URL und POD_SECRET im Template.</p>
+          )}
+          <p className="text-xs text-muted">Bilder und Videos werden automatisch auf diesen Server kopiert und bleiben auch ohne Pod in der Galerie.</p>
         </section>
       )}
 

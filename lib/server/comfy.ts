@@ -1,10 +1,16 @@
 import { config } from "./config";
+import { getPodLink, podSecret, serverMode } from "./podLink";
 
 export class ComfyUnavailableError extends Error {
-  constructor(cause?: unknown) {
-    super("ComfyUI antwortet nicht");
+  constructor(cause?: unknown, message = "ComfyUI antwortet nicht") {
+    super(message);
     this.cause = cause;
   }
+}
+
+/** Header für das Pod-Gateway (nur im Server-Modus). */
+export function podHeaders(): Record<string, string> {
+  return serverMode() && podSecret() ? { "x-pod-secret": podSecret() } : {};
 }
 
 export class ComfyPromptError extends Error {
@@ -18,8 +24,11 @@ export class ComfyPromptError extends Error {
 
 export async function comfyFetch(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = 15_000, ...rest } = init;
+  if (serverMode() && !getPodLink()) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
+  const headers = new Headers(rest.headers);
+  for (const [k, v] of Object.entries(podHeaders())) headers.set(k, v);
   try {
-    return await fetch(config.comfyUrl + path, { ...rest, signal: rest.signal ?? AbortSignal.timeout(timeoutMs), cache: "no-store" });
+    return await fetch(config.comfyUrl + path, { ...rest, headers, signal: rest.signal ?? AbortSignal.timeout(timeoutMs), cache: "no-store" });
   } catch (err) {
     throw new ComfyUnavailableError(err);
   }

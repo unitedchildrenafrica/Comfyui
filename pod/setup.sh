@@ -13,6 +13,7 @@
 #   CIVITAI_TOKEN   Pflicht (bilder + video)
 #   HF_TOKEN        Pflicht für video
 #   GH_TOKEN, APP_PASSWORD, CF_TUNNEL_TOKEN   fürs Frontend (siehe start-frontend.sh)
+#   VPS_URL, POD_SECRET   Server-Modus: Pod meldet sich beim eigenen Server an (statt eigener App/Tunnel)
 #   DISCORD_WEBHOOK_URL   optional
 #   WITH_QWEN=1     optional (video): llama-cpp-python für den Qwen-Prompt-Schreiber bauen
 #   SKIP_FRONTEND=1 optional: kein Frontend/Tunnel starten
@@ -38,7 +39,10 @@ MISSING=()
 [ -n "${CIVITAI_TOKEN:-}" ] || MISSING+=(CIVITAI_TOKEN)
 if want video && [ -z "${HF_TOKEN:-}" ]; then MISSING+=(HF_TOKEN); fi
 if [ "${SKIP_FRONTEND:-0}" != 1 ]; then
-  for v in GH_TOKEN APP_PASSWORD; do [ -n "${!v:-}" ] || MISSING+=("$v"); done
+  [ -n "${GH_TOKEN:-}" ] || MISSING+=(GH_TOKEN)
+  # Im Server-Modus (VPS_URL + POD_SECRET) loggt sich niemand direkt auf dem Pod ein
+  if [ -z "${VPS_URL:-}" ] && [ -z "${APP_PASSWORD:-}" ]; then MISSING+=(APP_PASSWORD); fi
+  if [ -n "${VPS_URL:-}" ] && [ -z "${POD_SECRET:-}" ]; then MISSING+=(POD_SECRET); fi
 fi
 if [ ${#MISSING[@]} -gt 0 ]; then
   echo "!! Fehlende Umgebungsvariablen: ${MISSING[*]} – im Pod-Template eintragen."

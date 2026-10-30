@@ -1,7 +1,10 @@
 import path from "node:path";
+import { getPodLink, serverMode } from "./podLink";
 
 export const config = {
+  /** Im Server-Modus die Adresse des angemeldeten Pod-Gateways, sonst COMFY_URL (lokal auf dem Pod). */
   get comfyUrl() {
+    if (serverMode()) return (getPodLink()?.url ?? "http://kein-pod.invalid").replace(/\/$/, "");
     return (process.env.COMFY_URL || "http://127.0.0.1:8188").replace(/\/$/, "");
   },
   get dataDir() {

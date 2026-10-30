@@ -2,6 +2,8 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { comfyJson } from "./comfy";
 import { config } from "./config";
+import { mirrorSoon, startMirrorLoop } from "./mirror";
+import { getPodLink, onPodChange, podSecret, serverMode } from "./podLink";
 
 export interface JobError {
   message: string;
@@ -47,6 +49,7 @@ interface Hub {
   doneNodes: Set<string>;
   /** KJ-Vorschau aktiv → normale Binär-Vorschau ignorieren (sonst überschreibt sie das MP4) */
   kjPreview: boolean;
+  podWatch?: boolean;
 }
 
 interface NodeName {
@@ -160,6 +163,7 @@ function finish(promptId: string, result: "success" | "error" | "interrupted") {
     s.nodesTotal = 0;
     h.doneNodes.clear();
   }
+  if (result === "success") mirrorSoon(promptId);
   changed("finished", { promptId, result, durationMs: s.durations[promptId] ?? null });
 }
 
@@ -290,7 +294,22 @@ function handleBinary(buf: Buffer) {
 function connect() {
   const h = hub();
   if (h.ws) return;
-  const url = config.comfyUrl.replace(/^http/, "ws") + `/ws?clientId=${h.clientId}`;
+  if (!h.podWatch) {
+    // neuer Pod angemeldet → WebSocket zur neuen Adresse aufbauen
+    h.podWatch = true;
+    onPodChange(() => {
+      try {
+        h.ws?.close();
+      } catch {}
+    });
+  }
+  if (serverMode() && !getPodLink()) {
+    scheduleReconnect();
+    return;
+  }
+  // Das Gateway prüft das Geheimnis bei WebSockets über die URL
+  const secret = serverMode() && podSecret() ? `&pod_secret=${encodeURIComponent(podSecret())}` : "";
+  const url = config.comfyUrl.replace(/^http/, "ws") + `/ws?clientId=${h.clientId}${secret}`;
   let ws: WebSocket;
   try {
     ws = new WebSocket(url);
@@ -340,6 +359,7 @@ function scheduleReconnect() {
 /** Startet (einmalig) die WebSocket-Verbindung zu ComfyUI. */
 export function ensureEvents() {
   connect();
+  startMirrorLoop();
   return hub();
 }
 

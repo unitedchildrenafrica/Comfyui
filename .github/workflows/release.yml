@@ -39,6 +39,8 @@ jobs:
           mkdir -p $OUT/.next
           cp -r .next/static $OUT/.next/static
           cp -r public $OUT/public
+          # Gateway für den Server-Modus (läuft auf dem Pod neben der App)
+          cp pod/pod-gateway.mjs $OUT/pod-gateway.mjs
           tar -czf pod-frontend.tar.gz -C $OUT .
           ls -lh pod-frontend.tar.gz
 
