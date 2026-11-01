@@ -27,11 +27,21 @@ export async function comfyFetch(path: string, init: RequestInit & { timeoutMs?:
   if (serverMode() && !getPodLink()) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
   const headers = new Headers(rest.headers);
   for (const [k, v] of Object.entries(podHeaders())) headers.set(k, v);
+  let res: Response;
   try {
-    return await fetch(config.comfyUrl + path, { ...rest, headers, signal: rest.signal ?? AbortSignal.timeout(timeoutMs), cache: "no-store" });
+    res = await fetch(config.comfyUrl + path, { ...rest, headers, signal: rest.signal ?? AbortSignal.timeout(timeoutMs), cache: "no-store" });
   } catch (err) {
     throw new ComfyUnavailableError(err);
   }
+  // 520–530 = Cloudflare erreicht den Pod-Tunnel nicht (statt einer HTML-Fehlerseite eine klare Meldung)
+  if (serverMode() && res.status >= 520 && res.status <= 530) {
+    await res.body?.cancel().catch(() => {});
+    throw new ComfyUnavailableError(
+      undefined,
+      `Pod-Tunnel nicht erreichbar (HTTP ${res.status}) – der Pod baut ihn gerade neu auf. In 1–2 Minuten nochmal versuchen.`,
+    );
+  }
+  return res;
 }
 
 export async function comfyJson<T = unknown>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {

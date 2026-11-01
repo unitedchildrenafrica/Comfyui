@@ -185,15 +185,18 @@ if [ "$AGENT" = 1 ]; then
   stop_pid tunnel
   pkill -f "cloudflared tunnel" 2>/dev/null || true
   : > "$LOG_DIR/tunnel.log"
+  # http2 (TCP 443) statt quic (UDP 7844): manche Vast-Rechner lassen kein UDP raus –
+  # dann bekommt der Quick Tunnel zwar eine Adresse, die aber ins Leere führt (HTTP 530).
+  CF_PROTOCOL="${CF_PROTOCOL:-http2}"
   if [ -n "${CF_GPU_TUNNEL_TOKEN:-}" ]; then
     GPU_URL="${GPU_PUBLIC_URL:-}"
     [ -z "$GPU_URL" ] && { log "FEHLER: GPU_PUBLIC_URL fehlt (z. B. https://gpu.comfyusel.uk)"; exit 1; }
     log "Starte festen Pod-Tunnel → $GPU_URL"
-    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate run --token "$CF_GPU_TUNNEL_TOKEN")
+    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate --protocol "$CF_PROTOCOL" run --token "$CF_GPU_TUNNEL_TOKEN")
   else
     GPU_URL=""
     log "Starte Pod-Tunnel mit Zufalls-Adresse (Quick Tunnel) …"
-    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATEWAY_PORT")
+    TUNNEL_CMD=(cloudflared tunnel --no-autoupdate --protocol "$CF_PROTOCOL" --url "http://127.0.0.1:$GATEWAY_PORT")
   fi
   (
     set +e
@@ -215,8 +218,32 @@ if [ "$AGENT" = 1 ]; then
     # Kein Abbruch bei Fehlern: „noch keine Adresse“ (grep findet nichts) ist hier normal
     set +e +o pipefail
     ok=0
+    bad=0
+    # Eigene Adresse von außen prüfen (DNS über Cloudflare, damit ein frisch vergebener
+    # Name nicht am lokalen DNS-Cache scheitert). Nur erreichbare Adressen werden gemeldet.
+    reachable() {
+      local code
+      code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' --doh-url https://1.1.1.1/dns-query "$1/_health" 2>/dev/null)
+      [ "$code" = 200 ] && return 0
+      code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$1/_health" 2>/dev/null)
+      [ "$code" = 200 ]
+    }
     while true; do
       url="${GPU_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/tunnel.log" | tail -1)}"
+      if [ -n "$url" ] && ! reachable "$url"; then
+        bad=$((bad + 1))
+        echo " $(date '+%H:%M:%S') $url ist von außen nicht erreichbar ($bad×)" >> "$LOG_DIR/heartbeat.log"
+        # Neue Adresse: ~90 s Zeit geben, danach (bzw. nach 3 Fehlschlägen im Betrieb) Tunnel neu starten
+        if { [ "$ok" = 0 ] && [ "$bad" -ge 18 ]; } || { [ "$ok" = 1 ] && [ "$bad" -ge 3 ]; }; then
+          echo " $(date '+%H:%M:%S') starte Tunnel neu …" >> "$LOG_DIR/heartbeat.log"
+          pkill -f "cloudflared tunnel --no-autoupdate --protocol" 2>/dev/null
+          bad=0
+          ok=0
+        fi
+        sleep 5
+        continue
+      fi
+      bad=0
       if [ -z "$url" ]; then
         # Diagnose: warum gibt es (noch) keine Tunnel-Adresse?
         n=$((${n:-0} + 1))
