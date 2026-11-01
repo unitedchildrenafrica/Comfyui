@@ -257,16 +257,26 @@ LORAS
 fi
 
 step "8. ComfyUI starten (Port $PORT)"
+# Speicher-Profil: „bild“ = Modelle bleiben zwischen Jobs geladen (schnell bei vielen Bildern),
+# „video“ = nach jedem Job alles entladen, kein Cache (wie im ursprünglichen H3-Skript – spart
+# RAM/VRAM bei den großen Video-Modellen, lädt dafür das Modell bei jedem Job neu).
+DEFAULT_PROFILE=bild; [ "$MODE" = video ] && DEFAULT_PROFILE=video
 cat > /workspace/start_comfy.sh << EOF
 #!/usr/bin/env bash
+# bash /workspace/start_comfy.sh [bild|video]   (ohne Angabe: $DEFAULT_PROFILE)
+PROFILE="\${1:-$DEFAULT_PROFILE}"
+case "\$PROFILE" in
+  video) MEM="--disable-smart-memory --cache-none --reserve-vram 1.0" ;;
+  *)     PROFILE=bild; MEM="--reserve-vram 1.0" ;;
+esac
 supervisorctl stop comfyui >/dev/null 2>&1
 pkill -f unbuffer 2>/dev/null; pkill -f main.py 2>/dev/null; sleep 4
 sed -i 's/{"crf": q, "preset": "medium"}/{"crf": q, "preset": "veryfast", "threads": "$THREADS"}/' "$H" 2>/dev/null
 cd $C
 OMP_NUM_THREADS=$THREADS MKL_NUM_THREADS=$THREADS PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \\
 nohup $P main.py --listen 0.0.0.0 --port $PORT --enable-cors-header \\
-  --disable-smart-memory --cache-none --reserve-vram 1.0 > /workspace/comfy.log 2>&1 &
-echo "ComfyUI startet auf Port $PORT – Log: tail -f /workspace/comfy.log"
+  \$MEM > /workspace/comfy.log 2>&1 &
+echo "ComfyUI startet auf Port $PORT (Profil \$PROFILE) – Log: tail -f /workspace/comfy.log"
 EOF
 chmod +x /workspace/start_comfy.sh
 bash /workspace/start_comfy.sh

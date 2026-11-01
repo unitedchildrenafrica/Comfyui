@@ -78,6 +78,8 @@ curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.gith
 
 Optionen: `WITH_QWEN=1` (baut llama-cpp-python für den Qwen-Prompt-Schreiber), `SKIP_FRONTEND=1` (ohne App/Tunnel).
 
+**Speicher-Profil von ComfyUI:** `bash /workspace/start_comfy.sh bild` lässt Modelle zwischen den Jobs geladen (deutlich schneller bei vielen Bildern). `bash /workspace/start_comfy.sh video` entlädt nach jedem Job alles und cacht nichts (wie im ursprünglichen H3-Skript – sicherer bei den großen Video-Modellen, aber jeder Job lädt das Modell neu). Standard: `video` im Modus „video“, sonst `bild`.
+
 Nach einem Pod-Neustart reicht: `bash /workspace/start_comfy.sh` und `bash /workspace/start-frontend.sh` (löst sich selbst vom Terminal, läuft also weiter, wenn das Terminal zugeht).
 
 `pod/start-frontend.sh` installiert bei Bedarf Node 22 und cloudflared, lädt das neueste Release nach `/opt/pod-frontend`, startet die App mit Neustart-Schleife auf `127.0.0.1:3000` und dann den Tunnel. Logs: `/workspace/logs/start-frontend.log`, `frontend.log`, `tunnel.log`, ComfyUI: `/workspace/comfy.log`.
