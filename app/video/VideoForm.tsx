@@ -12,6 +12,7 @@ import { H3_MAX_LORAS, h3PromptText } from "@/lib/builders/h3";
 import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
 import { H3_RESOLUTIONS, defaultH3Settings } from "@/lib/defaults";
 import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, nextClipName, parseH3Prompt, safeClipName, splitClipName } from "@/lib/h3prompt";
+import { parseVideoBatch } from "@/lib/h3batch";
 import { audioRefWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
@@ -26,7 +27,8 @@ export function VideoForm() {
   const [lastSeed, setLastSeed] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<{ message: string; nodeErrors?: Record<string, unknown>; comfyDown?: boolean } | null>(null);
+  const [submitError, setSubmitError] = useState<{ message: string; nodeErrors?: Record<string, unknown>; comfyDown?: boolean; batchErrors?: { block: number; message: string }[] } | null>(null);
+  const [failedInfo, setFailedInfo] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState<Submitted | null>(null);
   const [pasteInfo, setPasteInfo] = useState<string | null>(null);
   const set = (patch: Partial<H3Settings>) => setS((x) => ({ ...x, ...patch }));
@@ -52,14 +54,28 @@ export function VideoForm() {
 
   const isRef = s.mode === "REF2VA";
   const useBlocks = isRef && s.promptInput === "blocks";
-  const finalPrompt = h3PromptText(s);
-  const warnings = useMemo(() => checkH3Prompt(finalPrompt, useBlocks ? s.blocks.overall_soundscape : finalPrompt, s.noDialogue), [finalPrompt, useBlocks, s.blocks.overall_soundscape, s.noDialogue]);
+  const isBatch = s.promptInput === "batch";
+  const finalPrompt = isBatch ? "" : h3PromptText(s);
+
+  const batch = useMemo(
+    () => (isBatch ? parseVideoBatch(s.batchText ?? "", { mode: s.mode, noDialogue: s.noDialogue }) : null),
+    [isBatch, s.batchText, s.mode, s.noDialogue],
+  );
+  const batchReady = !!batch && batch.items.length > 0 && !batch.errors.length;
+  const warnings = useMemo(() => (isBatch ? [] : checkH3Prompt(finalPrompt, useBlocks ? s.blocks.overall_soundscape : finalPrompt, s.noDialogue)), [isBatch, finalPrompt, useBlocks, s.blocks.overall_soundscape, s.noDialogue]);
   const modes = options?.h3.modes.length ? options.h3.modes : ["REF2VA", "FL2VA", "T2VA", "I2VA", "L2VA"];
   const missing = options?.h3.missingNodes ?? [];
   const resId = H3_RESOLUTIONS.findIndex((r) => r.width === s.width && r.height === s.height);
   const tooManyImages = s.refs.filter((r) => r.kind === "image").length > imageLimit(s.mode);
 
   const pasteFull = (raw: string) => {
+    // Mehrere Prompts in der Zwischenablage (getrennt durch --- oder „Clip N“) → Batch
+    const multi = parseVideoBatch(raw, { mode: s.mode, noDialogue: s.noDialogue });
+    if (isBatch || multi.items.length + multi.errors.length >= 2) {
+      set({ promptInput: "batch", batchText: raw });
+      setPasteInfo(`${multi.items.length} Clips erkannt – Batch-Modus: jeder Clip wird ein eigener Job.`);
+      return;
+    }
     // Erste Zeile „Clip 35“ o. Ä. wird zum Dateinamen und nicht Teil des Prompts
     const { name, text } = splitClipName(raw);
     const named = name ? ` Clip-Name „${name}“ übernommen.` : " Keine Clip-Zeile oben – Dateiname nach Uhrzeit.";
@@ -74,6 +90,7 @@ export function VideoForm() {
   };
   /** Ganzer Prompt (evtl. mit Clip-Zeile) statt nur ein Block? */
   const isFullPrompt = (raw: string) => {
+    if (parseVideoBatch(raw, { mode: s.mode, noDialogue: s.noDialogue }).items.length >= 2) return true;
     const { text } = splitClipName(raw);
     return !!parseH3Prompt(text) && (text.match(/^\s*[a-z_]+\s*:/gim)?.length ?? 0) >= 3;
   };
@@ -84,12 +101,22 @@ export function VideoForm() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await api<{ promptId: string; seed: number }>("/api/generate/video", { method: "POST", json: { settings: s } });
-      setSubmitted({ promptIds: [res.promptId], seeds: [res.seed], kind: "video" });
-      setLastSeed(res.seed);
+      setFailedInfo([]);
+      const res = await api<{ promptIds: string[]; seeds: number[]; batchId?: string; failed?: { name: string; error: string }[] }>("/api/generate/video", {
+        method: "POST",
+        json: { settings: s },
+      });
+      setSubmitted({ promptIds: res.promptIds, seeds: res.seeds, batchId: res.batchId, kind: "video" });
+      if (res.seeds.length) setLastSeed(res.seeds[res.seeds.length - 1]);
+      setFailedInfo((res.failed ?? []).map((f) => `${f.name}: ${f.error}`));
     } catch (err) {
       const e = err as ApiError;
-      setSubmitError({ message: e.message, nodeErrors: e.data?.node_errors as Record<string, unknown> | undefined, comfyDown: e.comfyDown });
+      setSubmitError({
+        message: e.message,
+        nodeErrors: e.data?.node_errors as Record<string, unknown> | undefined,
+        comfyDown: e.comfyDown,
+        batchErrors: e.data?.batchErrors as { block: number; message: string }[] | undefined,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -146,6 +173,7 @@ export function VideoForm() {
           </button>
         </div>
         <PasteButton block label="📋 Prompt aus Zwischenablage einfügen (ersetzt alles)" onPaste={pasteFull} />
+        {!isBatch && (
         <Field
           label="Clip-Name"
           hint={clipFile ? `Datei: ${clipFile}_00001.mp4 (beim nächsten Mal _00002 …)` : "Leer = Datei nach Uhrzeit. Steht über dem Prompt eine Zeile wie „Clip 35“, wird sie hier automatisch übernommen."}
@@ -164,17 +192,72 @@ export function VideoForm() {
             )}
           </div>
         </Field>
-        {isRef && (
-          <Segmented
-            value={s.promptInput}
-            options={[
-              { value: "blocks", label: "Blöcke" },
-              { value: "full", label: "Kompletten Prompt einfügen" },
-            ]}
-            onChange={(v) => set({ promptInput: v, fullPrompt: v === "full" && !s.fullPrompt ? h3PromptText({ ...s, promptInput: "blocks" }) : s.fullPrompt })}
-          />
         )}
-        {useBlocks ? (
+        <Segmented
+          value={isBatch ? "batch" : isRef ? s.promptInput : "full"}
+          options={[
+            ...(isRef
+              ? [
+                  { value: "blocks" as const, label: "Blöcke" },
+                  { value: "full" as const, label: "Kompletter Prompt" },
+                ]
+              : [{ value: "full" as const, label: "Einzeln" }]),
+            { value: "batch" as const, label: "Batch" },
+          ]}
+          onChange={(v) =>
+            set({
+              promptInput: v,
+              fullPrompt: v === "full" && !s.fullPrompt && s.promptInput === "blocks" ? h3PromptText({ ...s, promptInput: "blocks" }) : s.fullPrompt,
+            })
+          }
+        />
+        {isBatch ? (
+          <div className="space-y-3">
+            <Field
+              label="Viele Prompts auf einmal"
+              hint="Prompts mit einer Zeile „---“ trennen – oder einfach jeden mit „Clip 35“, „Clip 36“ … beginnen. Die Clip-Zeile wird zum Dateinamen. Alle Clips nutzen dieselben Einstellungen, Referenzen und LoRAs. Jeder Clip wird ein eigener Job und sofort in die Warteschlange gestellt – läuft auch bei gesperrtem Handy weiter."
+            >
+              <textarea
+                className="input min-h-72 text-sm"
+                value={s.batchText ?? ""}
+                placeholder={"Clip 35\nsubject_definitions:\n…\n\n---\n\nClip 36\nsubject_definitions:\n…"}
+                onChange={(e) => set({ batchText: e.target.value })}
+              />
+            </Field>
+            {batch && (batch.items.length > 0 || batch.errors.length > 0) && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  {batch.items.length} Clips erkannt{batch.errors.length ? ` · ${batch.errors.length} fehlerhaft` : ""}
+                </p>
+                {batch.errors.length > 0 && (
+                  <ErrorBox>
+                    <ul className="space-y-1">
+                      {batch.errors.map((e, i) => (
+                        <li key={i}>{e.block ? `Abschnitt ${e.block}: ` : ""}{e.message}</li>
+                      ))}
+                    </ul>
+                  </ErrorBox>
+                )}
+                <ol className="space-y-1.5">
+                  {batch.items.map((it, i) => (
+                    <li key={i} className="rounded-xl border border-line bg-bg px-3 py-2 text-sm">
+                      <p>
+                        <span className="text-muted">{i + 1}.</span> <span className="font-medium">{it.name || "ohne Namen (Uhrzeit)"}</span>
+                      </p>
+                      {it.preview && <p className="truncate text-xs text-muted">{it.preview}</p>}
+                      {it.warnings.map((w) => (
+                        <p key={w} className="text-xs text-amber-200">
+                          ⚠ {w}
+                        </p>
+                      ))}
+                    </li>
+                  ))}
+                </ol>
+                {batch.skipped.length > 0 && <p className="text-xs text-muted">Übersprungen (kein Prompt): {batch.skipped.map((x) => `„${x}“`).join(", ")}</p>}
+              </div>
+            )}
+          </div>
+        ) : useBlocks ? (
           H3_BLOCK_KEYS.map((key) => (
             <Field
               key={key}
@@ -221,7 +304,7 @@ export function VideoForm() {
             />
           </Field>
         )}
-        {isRef && !useBlocks && (
+        {isRef && !useBlocks && !isBatch && (
           <button type="button" className="btn btn-ghost w-full" onClick={() => pasteFull(s.fullPrompt)}>
             In Blöcke verteilen
           </button>
@@ -237,7 +320,7 @@ export function VideoForm() {
             </ul>
           </WarnBox>
         )}
-        {showPreview && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs">{finalPrompt || "(leer)"}</pre>}
+        {showPreview && !isBatch && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs">{finalPrompt || "(leer)"}</pre>}
       </section>
 
       <Section title="Referenzen" defaultOpen={s.refs.length > 0} right={`${s.refs.length}`}>
@@ -316,7 +399,19 @@ export function VideoForm() {
         <ErrorBox>
           {submitError.comfyDown ? "ComfyUI antwortet nicht – bitte gleich nochmal versuchen." : submitError.message}
           {submitError.nodeErrors && <NodeErrors errors={submitError.nodeErrors} />}
+          {submitError.batchErrors && (
+            <ul className="mt-2 space-y-1 text-xs">
+              {submitError.batchErrors.map((e, i) => (
+                <li key={i}>{e.block ? `Abschnitt ${e.block}: ` : ""}{e.message}</li>
+              ))}
+            </ul>
+          )}
         </ErrorBox>
+      )}
+      {failedInfo.length > 0 && (
+        <WarnBox>
+          Nicht eingereiht: {failedInfo.join(" · ")}
+        </WarnBox>
       )}
       {submitted && <JobTracker submitted={submitted} onUseSeed={(seed) => set({ seed })} onAgain={generate} />}
 
@@ -324,10 +419,14 @@ export function VideoForm() {
         <button
           type="button"
           className="btn btn-primary h-14 w-full text-lg shadow-lg shadow-black/40"
-          disabled={submitting || !finalPrompt || missing.length > 0 || tooManyImages}
+          disabled={submitting || (isBatch ? !batchReady : !finalPrompt) || missing.length > 0 || tooManyImages}
           onClick={generate}
         >
-          {submitting ? "Wird eingereiht …" : `Video generieren – ${s.duration}s`}
+          {submitting
+            ? "Wird eingereiht …"
+            : isBatch
+              ? `Batch generieren – ${batch?.items.length ?? 0} Clips × ${s.duration}s`
+              : `Video generieren – ${s.duration}s`}
         </button>
       </div>
     </main>

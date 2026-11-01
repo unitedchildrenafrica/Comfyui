@@ -74,6 +74,12 @@ const NAMED_LINE = /^(name|titel|title|clip|dateiname|filename)\s*:\s*(.{1,80})$
 /** Markdown-Reste entfernen, die Claude gern um eine Zeile setzt (# **Clip 35** `…`) */
 const plainLine = (line: string) => line.trim().replace(/^#+\s*/, "").replace(/^[*_`]+|[*_`]+$/g, "").trim();
 
+/** Ist die Zeile eine Clip-Zeile wie „Clip 35“ / „**Clip 35**“? */
+export const isClipLine = (line: string) => CLIP_LINE.test(plainLine(line));
+
+/** Enthält der Text mindestens eine Block-Überschrift (summary:, detailed_description: …)? */
+export const hasBlockHeading = (text: string) => new RegExp(HEADING_RE.source, "im").test(text);
+
 /**
  * Erste Zeile als Clip-Name abtrennen. Erkannt wird sie, wenn sie wie „Clip 35“ oder
  * „Name: …“ aussieht – oder (nur wenn danach die Blöcke kommen) jede kurze erste Zeile.

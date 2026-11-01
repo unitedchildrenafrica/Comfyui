@@ -24,6 +24,12 @@ export async function GET() {
       };
     };
     const { finished: _f, errors: _e, durations: _d, ...live } = getLiveState();
+    // Noch offene Jobs pro Batch – damit der Wecker bei einem Video-Batch erst am Ende klingelt
+    const openPerBatch: Record<string, number> = {};
+    for (const id of ids) {
+      const b = jobs[id]?.batchId;
+      if (b) openPerBatch[b] = (openPerBatch[b] ?? 0) + 1;
+    }
     const recent = history.map((h) => ({
       promptId: h.promptId,
       label: jobs[h.promptId]?.label ?? h.files[0]?.filename ?? "Job",
@@ -33,6 +39,8 @@ export async function GET() {
       status: h.status,
       durationMs: h.durationMs ?? getLiveState().durations[h.promptId] ?? null,
       timestamp: h.timestamp,
+      batchId: jobs[h.promptId]?.batchId ?? null,
+      batchLeft: jobs[h.promptId]?.batchId ? (openPerBatch[jobs[h.promptId].batchId!] ?? 0) : 0,
     }));
     return Response.json({ running: q.running.map(describe), pending: q.pending.map(describe), recent, live });
   } catch (err) {

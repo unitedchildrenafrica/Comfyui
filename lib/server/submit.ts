@@ -3,6 +3,7 @@ import { parseBatch, type BatchError } from "../batch";
 import { buildWorkflow as buildAnima } from "../builders/anima";
 import { buildWorkflow as buildH3, h3PromptText } from "../builders/h3";
 import { buildWorkflow as buildWai } from "../builders/wai";
+import { parseVideoBatch, settingsForItem } from "../h3batch";
 import type { H3Settings, ImageSettings, JobRecord, PromptItem } from "../types";
 import { ComfyPromptError, nodeExists, queuePrompt } from "./comfy";
 import { getClientId, registerPromptNodes } from "./events";
@@ -119,4 +120,53 @@ export async function submitVideoJob(settings: H3Settings) {
     createdAt: Date.now(),
   });
   return { promptId, seed };
+}
+
+/**
+ * Video-Batch: jeder Prompt ein eigener Job, alle sofort in die ComfyUI-Queue. Läuft weiter,
+ * auch wenn das Handy gesperrt ist. Alle Clips teilen Einstellungen und Referenzen.
+ */
+export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResult> {
+  const { items, errors } = parseVideoBatch(settings.batchText ?? "", { mode: settings.mode, noDialogue: settings.noDialogue });
+  if (errors.length) throw new BatchParseError(errors);
+  if (!items.length) throw new BatchParseError([{ block: 0, message: "Keine Prompts gefunden" }]);
+  const clientId = getClientId();
+  const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
+  const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };
+
+  for (const [index, item] of items.entries()) {
+    const itemSettings = settingsForItem(settings, item);
+    const seed = settings.seed ?? randomSeed();
+    const wf = buildH3({ settings: itemSettings, seed });
+    const name = item.name || `Clip ${index + 1}`;
+    try {
+      const promptId = await queuePrompt(wf, clientId);
+      registerPromptNodes(promptId, wf);
+      result.promptIds.push(promptId);
+      result.seeds.push(seed);
+      await saveJob({
+        promptId,
+        kind: "video",
+        generator: "h3",
+        settings: itemSettings,
+        seed,
+        batchId: items.length > 1 ? batchId : undefined,
+        index,
+        label: item.name || item.preview.slice(0, 60) || name,
+        createdAt: Date.now(),
+      });
+    } catch (err) {
+      if (index === 0) throw err;
+      result.failed.push({
+        name,
+        error: err instanceof Error ? err.message : String(err),
+        node_errors: err instanceof ComfyPromptError ? err.details.node_errors : undefined,
+      });
+    }
+  }
+
+  if (items.length > 1) {
+    await saveBatch({ id: batchId, generator: "h3", promptIds: result.promptIds, total: items.length, createdAt: Date.now() });
+  }
+  return result;
 }

@@ -99,7 +99,8 @@ export interface H3Settings {
    * "Auto": DaSiWa-Standard (AV1 per NVENC) – kleiner, aber iPhone-Fotos verwirft es.
    */
   videoCodec?: "H.264" | "Auto";
-  promptInput: "blocks" | "full";
+  /** "batch" = viele Prompts auf einmal (batchText), jeder ein eigener Job */
+  promptInput: "blocks" | "full" | "batch";
   blocks: H3Blocks;
   /** Freitext für Nicht-REF2VA-Modi bzw. Modus „Kompletten Prompt einfügen“ */
   fullPrompt: string;
@@ -107,6 +108,8 @@ export interface H3Settings {
   refs: H3Ref[];
   /** Clip-Name für die Datei (z. B. „Clip 35“ → Clip_35_00001.mp4), leer = Datum/Uhrzeit */
   clipName?: string;
+  /** Video-Batch: Prompts getrennt durch „---“ oder „Clip N“-Zeilen */
+  batchText?: string;
 }
 
 export interface JobRecord {

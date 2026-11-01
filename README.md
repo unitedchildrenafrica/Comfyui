@@ -188,6 +188,10 @@ Steht in der **ersten Zeile** des eingefügten Prompts z. B. `Clip 35`, wird dar
 
 Anweisung für Claude, z. B.: *„Schreib in die allererste Zeile nur `Clip <Nummer>`, danach eine Leerzeile und dann den Prompt mit den Blöcken.“*
 
+### Video-Batch
+
+Im Video-Formular unter Prompt **„Batch“** wählen – oder einfach mehrere Prompts auf einmal einfügen, dann schaltet die App selbst um. Getrennt wird an Zeilen mit `---` oder vor jeder Zeile wie `Clip 35`. Einleitungssätze von Claude ohne Prompt werden übersprungen (und angezeigt), kaputte Abschnitte vor dem Start gemeldet. Alle Clips teilen Einstellungen, Referenzen und LoRAs. Jeder Clip wird ein eigener Job und **sofort serverseitig** eingereiht – der Pod arbeitet den Batch auch bei gesperrtem Handy ab. Fortschritt „x / y fertig“ mit Abbrechen wie beim Bild-Batch. Der Wecker klingelt erst, wenn der letzte Clip des Batches fertig ist.
+
 ### MiniMax H3: Wie Prompt und Referenzen übergeben werden
 
 Ermittelt aus dem Quellcode von `ComfyUI-DaSiWa-Nodes` (`nodes/nodes_minimax_h3_director.py`):

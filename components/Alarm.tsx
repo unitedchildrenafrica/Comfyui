@@ -79,7 +79,7 @@ export function BellToggle() {
   );
 }
 
-type RecentItem = { promptId: string; kind: string | null; status: string; label: string };
+type RecentItem = { promptId: string; kind: string | null; status: string; label: string; batchId?: string | null; batchLeft?: number };
 
 /**
  * Läuft auf jeder Seite (im Layout). Ist die Glocke an, klingelt nach jedem fertigen Video ein
@@ -119,9 +119,10 @@ export function AlarmHost() {
     fresh.forEach((r) => seen.add(r.promptId));
     if (fresh.length) writeSeen(seen);
     // Selbst gestoppte Videos („interrupted“) lösen nie einen Alarm aus
-    const video = fresh.find((r) => r.kind === "video" && r.status !== "interrupted" && !interrupted.current.has(r.promptId));
+    // Bei einem Video-Batch erst klingeln, wenn kein Clip des Batches mehr wartet
+    const video = fresh.find((r) => r.kind === "video" && r.status !== "interrupted" && !interrupted.current.has(r.promptId) && !r.batchLeft);
     if (video) {
-      setRinging({ label: video.label, error: video.status === "error" });
+      setRinging({ label: video.batchId ? `Batch fertig (letzter Clip: ${video.label})` : video.label, error: video.status === "error" });
       startAlarm();
     }
   }, [active]);
