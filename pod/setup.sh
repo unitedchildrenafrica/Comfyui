@@ -54,11 +54,17 @@ if [ "${SKIP_FRONTEND:-0}" != 1 ]; then
   step "0. Pod-Frontend + Tunnel (im Hintergrund, Log: $LOG_DIR/start-frontend.log)"
   HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   START="$HERE/start-frontend.sh"
-  if [ ! -f "$START" ]; then
+  # Im Repo-Checkout die mitgelieferte Version nehmen, sonst immer die neueste laden
+  # (eine alte Kopie in /workspace darf keine Korrekturen verschlucken)
+  if [ ! -d "$HERE/../.git" ]; then
     START=/workspace/start-frontend.sh
-    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-      "https://api.github.com/repos/$GH_REPO/contents/pod/start-frontend.sh?ref=$GH_REF" -o "$START" ||
-      FAIL+=("start-frontend.sh laden")
+    if curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+      "https://api.github.com/repos/$GH_REPO/contents/pod/start-frontend.sh?ref=$GH_REF" -o "$START.new"; then
+      mv "$START.new" "$START"
+    else
+      rm -f "$START.new"
+      [ -f "$START" ] && echo ">> start-frontend.sh nicht ladbar – nutze vorhandene Kopie" || FAIL+=("start-frontend.sh laden")
+    fi
   fi
   # Tunnel nicht erst nach ComfyUI starten – ComfyUI kommt hier erst ganz am Ende hoch
   if [ -f "$START" ]; then
