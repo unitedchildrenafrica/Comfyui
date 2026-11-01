@@ -17,7 +17,6 @@ export const SETUP_VIDEO_LORAS = [
   "MalePenis.safetensors",
   "MaleAnatomy.safetensors",
   "CumOnFace.safetensors",
-  "DildoMasturbation.safetensors",
   "FingeringSelf.safetensors",
   "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
 ];
