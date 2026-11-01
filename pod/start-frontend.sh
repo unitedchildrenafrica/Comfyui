@@ -25,6 +25,13 @@
 #   In diesem Modus wird CF_TUNNEL_TOKEN ignoriert (der Tunnel für die App läuft auf dem Server).
 set -euo pipefail
 
+# Vom Terminal lösen: Alles, was dieses Skript im Hintergrund startet, läuft in einer eigenen
+# Sitzung weiter – auch wenn das Jupyter-/SSH-Terminal geschlossen wird.
+if [ -z "${PF_DETACHED:-}" ] && command -v setsid >/dev/null; then
+  export PF_DETACHED=1
+  exec setsid --wait bash "$0" "$@"
+fi
+
 GH_REPO="${GH_REPO:-unitedchildrenafrica/Comfyui}"
 APP_DIR="${APP_DIR:-/opt/pod-frontend}"
 LOG_DIR="${LOG_DIR:-/workspace/logs}"
@@ -166,6 +173,7 @@ if [ "$AGENT" = 1 ]; then
   stop_pid gateway
   log "Starte Pod-Gateway auf 127.0.0.1:$GATEWAY_PORT …"
   (
+    set +e
     export POD_SECRET COMFY_URL GATEWAY_PORT APP_URL="http://127.0.0.1:$PORT"
     while true; do
       node "$APP_DIR/pod-gateway.mjs" >> "$LOG_DIR/gateway.log" 2>&1 || true
@@ -188,6 +196,7 @@ if [ "$AGENT" = 1 ]; then
     TUNNEL_CMD=(cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$GATEWAY_PORT")
   fi
   (
+    set +e
     while true; do
       "${TUNNEL_CMD[@]}" >> "$LOG_DIR/tunnel.log" 2>&1 || true
       sleep 3
@@ -203,10 +212,19 @@ if [ "$AGENT" = 1 ]; then
   : > "$LOG_DIR/heartbeat.log"
   (
     export VPS_URL POD_SECRET GPU_URL GPU_NAME LOG_DIR
+    # Kein Abbruch bei Fehlern: „noch keine Adresse“ (grep findet nichts) ist hier normal
+    set +e +o pipefail
     ok=0
     while true; do
       url="${GPU_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/tunnel.log" | tail -1)}"
-      if [ -n "$url" ] && curl -fsS -m 20 -X POST "$VPS_URL/api/pod/register" -H "x-pod-secret: $POD_SECRET" \
+      if [ -z "$url" ]; then
+        # Diagnose: warum gibt es (noch) keine Tunnel-Adresse?
+        n=$((${n:-0} + 1))
+        if [ $((n % 12)) = 1 ]; then
+          hint=$(grep -E "ERR|429|Too Many|failed" "$LOG_DIR/tunnel.log" | tail -1 | cut -c1-200)
+          echo " $(date '+%H:%M:%S') warte auf Tunnel-Adresse …${hint:+ letzter Tunnel-Fehler: $hint}" >> "$LOG_DIR/heartbeat.log"
+        fi
+      elif curl -fsS -m 20 -X POST "$VPS_URL/api/pod/register" -H "x-pod-secret: $POD_SECRET" \
           -H "content-type: application/json" -d "{\"url\":\"$url\",\"gpu\":\"$GPU_NAME\"}" >> "$LOG_DIR/heartbeat.log" 2>&1; then
         echo " $(date '+%H:%M:%S') $url" >> "$LOG_DIR/heartbeat.log"
         ok=1
