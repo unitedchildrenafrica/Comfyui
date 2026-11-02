@@ -49,6 +49,29 @@ ask() {
 }
 random() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
+# bash setup-server.sh patreon → Patreon-Zugang (neu) eintragen, App neu starten, fertig
+if [ "${1:-}" = patreon ]; then
+  echo "Werte aus dem Patreon-Portal (patreon.com/portal → Meine Clients → dein Client)."
+  echo "Eingaben werden nicht angezeigt."
+  for k in PATREON_CLIENT_ID PATREON_CLIENT_SECRET PATREON_ACCESS_TOKEN PATREON_REFRESH_TOKEN; do
+    case $k in
+      PATREON_CLIENT_ID) label="Client ID" ;;
+      PATREON_CLIENT_SECRET) label="Client Secret" ;;
+      PATREON_ACCESS_TOKEN) label="Creator's Access Token" ;;
+      PATREON_REFRESH_TOKEN) label="Creator's Refresh Token" ;;
+    esac
+    read -r -s -p "$label: " v < /dev/tty; echo
+    v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    [ -n "$v" ] || { echo "$label fehlt – abgebrochen"; exit 1; }
+    put "$k" "$v"
+  done
+  # Alte, erneuerte Tokens verwerfen – ab jetzt gelten die neuen
+  rm -f "$(get DATA_DIR)/patreon-tokens.json"
+  systemctl restart pod-frontend
+  log "Patreon eingetragen, App neu gestartet. Liste: Notizen → Inner Circle."
+  exit 0
+fi
+
 ask GH_TOKEN "GitHub-Token (github_pat_…)"
 ask APP_PASSWORD "Passwort für die App"
 ask CF_TUNNEL_TOKEN "Cloudflare-Tunnel-Token für comfy.comfyusel.uk (eyJ…)"

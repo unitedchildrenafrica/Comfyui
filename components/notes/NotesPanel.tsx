@@ -8,15 +8,17 @@ import { ChecklistTab } from "./Checklist";
 import { IdeasTab } from "./Ideas";
 import { OrdersTab, SendTab } from "./Orders";
 import { PadTab } from "./Pad";
+import { PatreonTab, usePatreon } from "./Patreon";
 import { PostsTab } from "./Posts";
 import { SnippetsTab } from "./Snippets";
 import { useNotes } from "./useNotes";
 
-type Tab = "orders" | "send" | "posts" | "ideas" | "characters" | "month" | "snippets" | "pad";
+type Tab = "orders" | "send" | "patreon" | "posts" | "ideas" | "characters" | "month" | "snippets" | "pad";
 
-const TABS: { id: Tab; label: string; col: CollectionName }[] = [
+const TABS: { id: Tab; label: string; col: CollectionName | null }[] = [
   { id: "orders", label: "Aufträge", col: "orders" },
   { id: "send", label: "Schicken", col: "orders" },
+  { id: "patreon", label: "Inner Circle", col: null },
   { id: "posts", label: "Posten", col: "posts" },
   { id: "ideas", label: "Ideen", col: "ideas" },
   { id: "characters", label: "Charaktere", col: "characters" },
@@ -30,6 +32,8 @@ const TAB_KEY = "pf.notes.tab";
 /** Komplette Notizen-Ansicht – in der Seitenleiste am Mac und als eigene Seite am Handy. */
 export function NotesPanel({ compact = false }: { compact?: boolean }) {
   const notes = useNotes();
+  const patreon = usePatreon();
+  const toContact = patreon.data?.members.filter((m) => m.state === "contact").length ?? 0;
   const [tab, setTab] = useState<Tab>("orders");
   const [query, setQuery] = useState("");
   const [postFilter, setPostFilter] = useState<PostStatus>("planned");
@@ -51,8 +55,13 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
 
   // Treffer pro Tab während der Suche
   const hits = (t: (typeof TABS)[number]) => {
-    const list = notes.data[t.col] as { id: string }[];
-    const found = list.filter((x) => matches(t.col, x as never, query));
+    if (!t.col) {
+      const ql = query.toLowerCase();
+      return (patreon.data?.members ?? []).filter((m) => `${m.name} ${m.email}`.toLowerCase().includes(ql)).length;
+    }
+    const col = t.col;
+    const list = notes.data[col] as { id: string }[];
+    const found = list.filter((x) => matches(col, x as never, query));
     if (t.id === "send") return found.filter((o) => (o as unknown as { status: string }).status === "tosend").length;
     return found.length;
   };
@@ -73,11 +82,12 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className={`grid gap-1.5 ${patreon.data?.configured ? "grid-cols-5" : "grid-cols-4"}`}>
         <Stat n={counts.open} label="offen" to="orders" />
         <Stat n={counts.tosend} label="zu schicken" to="send" warn />
         <Stat n={counts.unreleased} label="unreleased" to="posts" post="unreleased" />
         <Stat n={counts.planned} label="zu posten" to="posts" post="planned" />
+        {patreon.data?.configured && <Stat n={toContact} label={"an\u00ADschrei\u00ADben"} to="patreon" warn />}
       </div>
 
       <div className="relative">
@@ -91,7 +101,7 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
 
       <div className="flex flex-wrap gap-1.5">
         {TABS.map((t) => {
-          const n = q ? hits(t) : t.id === "month" ? counts.monthLeft : null;
+          const n = q ? hits(t) : t.id === "month" ? counts.monthLeft : t.id === "patreon" ? toContact : null;
           return (
             <button
               key={t.id}
@@ -122,6 +132,7 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
         <>
           {tab === "orders" && <OrdersTab notes={notes} query={q} />}
           {tab === "send" && <SendTab notes={notes} query={q} />}
+          {tab === "patreon" && <PatreonTab p={patreon} query={q} />}
           {tab === "posts" && <PostsTab notes={notes} query={q} filter={postFilter} setFilter={setPostFilter} />}
           {tab === "ideas" && <IdeasTab notes={notes} query={q} />}
           {tab === "characters" && <CharactersTab notes={notes} query={q} />}

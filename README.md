@@ -119,6 +119,18 @@ Am PC/Mac steht links eine Notizen-Leiste (Breite am Rand ziehen, Doppelklick = 
 
 Oben stehen die Zähler (offen / zu schicken / unreleased / zu posten), die Suche geht über alle Listen.
 
+### 6c. Patreon: Inner-Circle-Liste
+
+Notizen → **Inner Circle** zeigt die Mitglieder ausgewählter Patreon-Stufen (Standard: Stufen mit „Inner Circle“ im Namen, per Tipp änderbar). Wer neu gezahlt hat, steht unter **„Hat gezahlt – anschreiben“**; nach **✓ Angeschrieben** ist Pause bis zur nächsten Abbuchung. Abgelehnte Zahlungen stehen extra. Abfrage stündlich (oder „Jetzt abfragen“) über die Patreon API v2, Nachrichten verschickt die App nicht.
+
+Einrichten: Im Patreon-Portal (patreon.com/portal → Meine Clients) einen Client anlegen (Umleitungs-URI `https://comfy.comfyusel.uk/api/patreon/callback`, API v2), dann auf dem Server:
+
+```bash
+bash /root/setup-server.sh patreon
+```
+
+und Client ID, Client Secret, Creator's Access Token und Creator's Refresh Token eingeben (werden nicht angezeigt, landen in `/etc/pod-frontend.env`). Abgelaufene Tokens erneuert die App selbst (`DATA_DIR/patreon-tokens.json`). Zum lokalen Testen gibt es `dev/mock-patreon.mjs`.
+
 ### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
 
 Die App läuft dann **immer** auf deinem Server unter `https://comfy.comfyusel.uk`, auch ohne Pod. Der GPU-Pod rechnet nur und meldet sich beim Start selbst an. Fertige Bilder und Videos werden **automatisch auf den Server kopiert**. Galerie, Favoriten, ZIP und Löschen funktionieren deshalb auch, wenn gerade kein Pod läuft. „Modelle laden“ wird an den Pod weitergereicht.
