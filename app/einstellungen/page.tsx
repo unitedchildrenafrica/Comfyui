@@ -30,7 +30,12 @@ export default function SettingsPage() {
   const [app, setApp] = useState<AppSettings | null>(null);
   const [presets, setPresets] = useState<Record<string, { generator: string }>>({});
   const [saved, setSaved] = useState(false);
-  const [pod, setPod] = useState<{ serverMode: boolean; online: boolean; link: { url: string; gpu?: string; registeredAt: number; lastSeen: number } | null } | null>(null);
+  const [pod, setPod] = useState<{
+    serverMode: boolean;
+    online: boolean;
+    link: { url: string; gpu?: string; registeredAt: number; lastSeen: number } | null;
+    live?: { connected: boolean; error: string | null };
+  } | null>(null);
 
   const check = useCallback(async () => {
     setStatusErr(null);
@@ -120,6 +125,12 @@ export default function SettingsPage() {
             </p>
           ) : (
             <p className="text-muted">Noch kein Pod angemeldet. Starte einen Pod mit VPS_URL und POD_SECRET im Template.</p>
+          )}
+          {pod.online && pod.live && (
+            <p className={pod.live.connected ? "text-emerald-400" : "text-amber-300"}>
+              Live-Verbindung (Fortschritt + Vorschau): {pod.live.connected ? "verbunden" : "getrennt"}
+              {!pod.live.connected && pod.live.error ? <span className="block text-xs text-muted">{pod.live.error}</span> : null}
+            </p>
           )}
           <p className="text-xs text-muted">Bilder und Videos werden automatisch auf diesen Server kopiert und bleiben auch ohne Pod in der Galerie.</p>
         </section>

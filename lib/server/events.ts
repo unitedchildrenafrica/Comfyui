@@ -35,6 +35,8 @@ export interface LiveState {
   /** prompt_id → Ergebnis, nur für Jobs seit App-Start */
   finished: Record<string, "success" | "error" | "interrupted">;
   errors: Record<string, JobError>;
+  /** Letzter Grund, warum die Live-Verbindung zu ComfyUI nicht steht (null = alles gut) */
+  linkError: string | null;
 }
 
 interface Hub {
@@ -43,6 +45,11 @@ interface Hub {
   state: LiveState;
   preview: { data: Buffer; mime: string } | null;
   ws: WebSocket | null;
+  /** Ziel und Startzeit der aktuellen Verbindung – hängende oder veraltete werden ersetzt */
+  wsUrl: string | null;
+  wsStartedAt: number;
+  /** Zähler: Ereignisse alter, verworfener Verbindungen werden ignoriert */
+  wsGen: number;
   retry: ReturnType<typeof setTimeout> | null;
   /** prompt_id → Node-ID → Klasse/Titel (für den Namen des aktuellen Nodes) */
   promptNodes: Map<string, Record<string, NodeName>>;
@@ -83,9 +90,13 @@ function hub(): Hub {
         durations: {},
         finished: {},
         errors: {},
+        linkError: null,
       },
       preview: null,
       ws: null,
+      wsUrl: null,
+      wsStartedAt: 0,
+      wsGen: 0,
       retry: null,
       promptNodes: new Map(),
       doneNodes: new Set(),
@@ -291,39 +302,81 @@ function handleBinary(buf: Buffer) {
   changed("preview");
 }
 
+/** Aktuelle Verbindung verwerfen – ihre späten Ereignisse zählen nicht mehr. */
+function dropSocket(h: Hub, reason?: string) {
+  const old = h.ws;
+  h.wsGen++;
+  h.ws = null;
+  h.wsUrl = null;
+  if (reason) h.state.linkError = reason;
+  if (h.state.connected) {
+    h.state.connected = false;
+    changed("disconnected");
+  }
+  try {
+    old?.close();
+  } catch {}
+}
+
+function targetUrl(): string {
+  // Das Gateway prüft das Geheimnis bei WebSockets über die URL
+  const secret = serverMode() && podSecret() ? `&pod_secret=${encodeURIComponent(podSecret())}` : "";
+  return config.comfyUrl.replace(/^http/, "ws") + `/ws?clientId=${hub().clientId}${secret}`;
+}
+
+/** Ziel ohne Geheimnis – für Fehlermeldungen */
+const showUrl = (u: string) => u.replace(/[?&]pod_secret=[^&]*/, "").replace(/\?clientId=[^&]*/, "");
+
 function connect() {
   const h = hub();
-  if (h.ws) return;
   if (!h.podWatch) {
-    // neuer Pod angemeldet → WebSocket zur neuen Adresse aufbauen
+    // neuer Pod bzw. neue Tunnel-Adresse → sofort neu verbinden, nicht auf das Schließen warten
     h.podWatch = true;
     onPodChange(() => {
-      try {
-        h.ws?.close();
-      } catch {}
+      dropSocket(h, "Pod-Adresse geändert – verbinde neu …");
+      if (h.retry) {
+        clearTimeout(h.retry);
+        h.retry = null;
+      }
+      connect();
     });
+    // Wächter: hängende Verbindungsversuche oder veraltete Ziele ersetzen
+    setInterval(() => {
+      if (h.ws && !h.state.connected && Date.now() - h.wsStartedAt > 20_000) dropSocket(h, "Verbindungsaufbau hing – neuer Versuch");
+      if (!h.ws && !h.retry) connect();
+    }, 10_000).unref?.();
   }
   if (serverMode() && !getPodLink()) {
+    h.state.linkError = "Kein Pod angemeldet";
     scheduleReconnect();
     return;
   }
-  // Das Gateway prüft das Geheimnis bei WebSockets über die URL
-  const secret = serverMode() && podSecret() ? `&pod_secret=${encodeURIComponent(podSecret())}` : "";
-  const url = config.comfyUrl.replace(/^http/, "ws") + `/ws?clientId=${h.clientId}${secret}`;
+  const url = targetUrl();
+  if (h.ws) {
+    if (h.wsUrl === url) return;
+    dropSocket(h); // Adresse hat sich geändert
+  }
   let ws: WebSocket;
   try {
     ws = new WebSocket(url);
-  } catch {
+  } catch (err) {
+    h.state.linkError = `WebSocket nicht möglich: ${err instanceof Error ? err.message : String(err)}`;
     scheduleReconnect();
     return;
   }
+  const gen = ++h.wsGen;
   ws.binaryType = "arraybuffer";
   h.ws = ws;
+  h.wsUrl = url;
+  h.wsStartedAt = Date.now();
   ws.onopen = () => {
+    if (gen !== h.wsGen) return;
     h.state.connected = true;
+    h.state.linkError = null;
     changed("connected");
   };
   ws.onmessage = (ev) => {
+    if (gen !== h.wsGen) return;
     if (typeof ev.data === "string") {
       try {
         handleJson(JSON.parse(ev.data));
@@ -332,15 +385,21 @@ function connect() {
       handleBinary(Buffer.from(ev.data));
     }
   };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
+    if (gen !== h.wsGen) return;
     h.ws = null;
+    h.wsUrl = null;
+    if (!h.state.connected || ev.code !== 1000) h.state.linkError = `Verbindung zu ${showUrl(url)} getrennt (Code ${ev.code}${ev.reason ? `, ${ev.reason}` : ""})`;
     if (h.state.connected) {
       h.state.connected = false;
       changed("disconnected");
     }
     scheduleReconnect();
   };
-  ws.onerror = () => {
+  ws.onerror = (ev) => {
+    if (gen !== h.wsGen) return;
+    const msg = (ev as unknown as { message?: string; error?: Error }).message || (ev as unknown as { error?: Error }).error?.message;
+    if (msg) h.state.linkError = `Fehler bei ${showUrl(url)}: ${msg}`;
     try {
       ws.close();
     } catch {}
