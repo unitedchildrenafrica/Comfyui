@@ -49,6 +49,20 @@ ask() {
 }
 random() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
+# Sich selbst aktualisieren: neueste Version des Skripts holen und damit weitermachen
+if [ -z "${SETUP_UPDATED:-}" ] && [ -n "$(get GH_TOKEN)" ]; then
+  NEW=$(mktemp)
+  if curl -fsSL "${CURL_NET[@]}" -H "Authorization: Bearer $(get GH_TOKEN)" -H "Accept: application/vnd.github.raw" \
+      "https://api.github.com/repos/${GH_REPO}/contents/server/setup-server.sh?ref=main" -o "$NEW" && bash -n "$NEW" && ! cmp -s "$NEW" "$0"; then
+    # neue Datei statt Inhalt überschreiben – das laufende bash liest sonst Bruchstücke
+    chmod 755 "$NEW"
+    mv -f "$NEW" "$0"
+    log "Skript aktualisiert – starte neue Version …"
+    SETUP_UPDATED=1 exec bash "$0" "$@"
+  fi
+  rm -f "$NEW"
+fi
+
 # bash setup-server.sh patreon → Patreon-Zugang (neu) eintragen, App neu starten, fertig
 if [ "${1:-}" = patreon ]; then
   echo "Werte aus dem Patreon-Portal (patreon.com/portal → Meine Clients → dein Client)."
