@@ -133,3 +133,11 @@ export async function removeFavorite(f: { filename: string; subfolder: string })
   const next = list.filter((x) => favKey(x) !== favKey(f));
   if (next.length !== list.length) await saveFavorites(next);
 }
+
+export async function removeFavorites(list: { filename: string; subfolder: string }[]) {
+  if (!list.length) return;
+  const gone = new Set(list.map(favKey));
+  const favs = await getFavorites();
+  const next = favs.filter((x) => !gone.has(favKey(x)));
+  if (next.length !== favs.length) await saveFavorites(next);
+}

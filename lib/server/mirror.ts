@@ -154,9 +154,15 @@ export async function listMirrored(): Promise<MirroredFile[]> {
 }
 
 export async function forgetMirrored(f: { subfolder: string; filename: string }) {
+  await forgetMirroredMany([f]);
+}
+
+/** Aus dem Index nehmen und merken, damit der Spiegel sie nicht erneut vom Pod holt. */
+export async function forgetMirroredMany(list: { subfolder: string; filename: string }[]) {
+  if (!list.length) return;
   const idx = await index();
-  delete idx.files[key(f)];
-  idx.deleted = [...new Set([...(idx.deleted ?? []), key(f)])].slice(-20000);
+  for (const f of list) delete idx.files[key(f)];
+  idx.deleted = [...new Set([...(idx.deleted ?? []), ...list.map(key)])].slice(-50000);
   saveSoon();
 }
 

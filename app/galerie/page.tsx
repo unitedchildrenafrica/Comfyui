@@ -32,6 +32,12 @@ export default function GalleryPage() {
   const [canDelete, setCanDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const touch = useRef<number | null>(null);
+  // Verwalten: Auswahl zum Herunterladen/Löschen
+  const [manage, setManage] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [manageMsg, setManageMsg] = useState<string | null>(null);
+  const zipForm = useRef<HTMLFormElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,12 +87,13 @@ export default function GalleryPage() {
   }, []);
 
   // Anzahl/Größe für den ZIP-Knopf (direkt vom Ausgabeordner, also auch alte Batches)
-  useEffect(() => {
+  const loadZipInfo = useCallback(() => {
     setZipInfo(null);
     api<{ files: number; bytes: number }>(`/api/zip?info=1&folder=${encodeURIComponent(folder)}`)
       .then(setZipInfo)
       .catch(() => {});
   }, [folder]);
+  useEffect(loadZipInfo, [loadZipInfo]);
   const shown = useMemo(
     () =>
       kind === "fav"
@@ -95,6 +102,87 @@ export default function GalleryPage() {
     [items, kind, folder, favs],
   );
   const current = open !== null ? shown[open] : null;
+
+  // --- Verwalten ------------------------------------------------------------------------
+  const selectedItems = shown.filter((i) => selected.has(keyOf(i)));
+  const toggleSelect = (it: Item) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(keyOf(it))) next.delete(keyOf(it));
+      else next.add(keyOf(it));
+      return next;
+    });
+  const endManage = () => {
+    setManage(false);
+    setSelected(new Set());
+    setManageMsg(null);
+  };
+  const forget = (gone: { filename: string; subfolder: string }[]) => {
+    const keys = new Set(gone.map(keyOf));
+    setItems((list) => (list ?? []).filter((i) => !keys.has(keyOf(i))));
+    setFavs((list) => list.filter((f) => !keys.has(keyOf(f))));
+    setSelected(new Set());
+  };
+  const downloadSelected = () => {
+    if (!selectedItems.length) return;
+    if (selectedItems.length === 1) {
+      const a = document.createElement("a");
+      a.href = viewUrl(selectedItems[0], { download: "1" });
+      a.download = selectedItems[0].filename;
+      a.click();
+      return;
+    }
+    // Formular-POST: Der Browser lädt die ZIP selbst herunter (auch große Auswahl, auch am iPhone)
+    const form = zipForm.current!;
+    (form.elements.namedItem("files") as HTMLInputElement).value = JSON.stringify(
+      selectedItems.map((i) => ({ filename: i.filename, subfolder: i.subfolder })),
+    );
+    form.submit();
+  };
+  const deleteSelected = async () => {
+    const list = selectedItems.map((i) => ({ filename: i.filename, subfolder: i.subfolder }));
+    if (!list.length || !window.confirm(`${list.length} ${list.length === 1 ? "Datei" : "Dateien"} wirklich löschen?`)) return;
+    setBusy(true);
+    setManageMsg(null);
+    try {
+      const r = await api<{ deleted: number; failed: string[] }>("/api/files", { method: "POST", json: { action: "delete", files: list } });
+      forget(list);
+      setManageMsg(`${r.deleted} gelöscht${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen: ${r.failed[0]}` : ""}`);
+      loadZipInfo();
+    } catch (err) {
+      setManageMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const deleteFolderAll = async () => {
+    const what = folder ? `den Ordner „${folder}“` : "die GANZE Galerie (alle Ordner)";
+    const n = zipInfo?.files ?? 0;
+    const typed = window.prompt(`Damit löschst du ${what} – ${n} Dateien, Bilder und Videos. Das lässt sich nicht rückgängig machen.\n\nZum Bestätigen LÖSCHEN eintippen:`);
+    if (typed?.trim().toUpperCase() !== "LÖSCHEN") return;
+    setBusy(true);
+    setManageMsg(null);
+    try {
+      const r = await api<{ deleted: number; failed: string[] }>("/api/files", {
+        method: "POST",
+        json: { action: "delete-folder", folder, all: !folder },
+      });
+      setManageMsg(`${r.deleted} ${r.deleted === 1 ? "Datei" : "Dateien"} gelöscht${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen` : ""}`);
+      setSelected(new Set());
+      setFolder("");
+      await load();
+      api<{ folders: string[] }>("/api/zip?list=1")
+        .then((x) => setDiskFolders(x.folders))
+        .catch(() => {});
+      api<{ items: Item[] }>("/api/favorites")
+        .then((x) => setFavs(x.items))
+        .catch(() => {});
+    } catch (err) {
+      setManageMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const step = (d: number) => setOpen((o) => (o === null ? o : Math.min(shown.length - 1, Math.max(0, o + d))));
 
   useEffect(() => {
@@ -112,10 +200,20 @@ export default function GalleryPage() {
     <main className="page">
       <div className="flex items-center justify-between px-1">
         <h1 className="text-lg font-semibold">Galerie</h1>
-        <button type="button" className="text-sm text-accent underline" onClick={load}>
-          Aktualisieren
-        </button>
+        <span className="flex items-center gap-3">
+          {kind !== "fav" && (
+            <button type="button" className={`btn min-h-9 px-3 text-sm ${manage ? "btn-primary" : "btn-ghost"}`} onClick={() => (manage ? endManage() : setManage(true))}>
+              {manage ? "Fertig" : "Verwalten"}
+            </button>
+          )}
+          <button type="button" className="text-sm text-accent underline" onClick={load}>
+            Aktualisieren
+          </button>
+        </span>
       </div>
+      <form ref={zipForm} method="post" action="/api/zip" className="hidden">
+        <input type="hidden" name="files" />
+      </form>
       {error && (error.comfyDown ? <ComfyDown onRetry={load} /> : <ErrorBox>{error.message}</ErrorBox>)}
       <Segmented
         value={kind}
@@ -128,9 +226,21 @@ export default function GalleryPage() {
         onChange={(v) => {
           setKind(v);
           setOpen(null);
+          if (v === "fav") endManage();
         }}
       />
       {kind !== "fav" && <Select value={folder} onChange={setFolder} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />}
+      {manage && (
+        <section className="card space-y-2 p-3">
+          <p className="text-sm text-muted">Bilder antippen zum Auswählen. Unten herunterladen oder löschen.</p>
+          {canDelete && zipInfo && zipInfo.files > 0 && (
+            <button type="button" className="btn btn-danger w-full" disabled={busy} onClick={deleteFolderAll}>
+              🗑 {folder ? `Ordner „${folder}“ löschen` : "Ganze Galerie löschen"} ({zipInfo.files} {zipInfo.files === 1 ? "Datei" : "Dateien"})
+            </button>
+          )}
+          {manageMsg && <p className="text-sm text-soft">{manageMsg}</p>}
+        </section>
+      )}
       {kind === "fav" && (
         <p className="px-1 text-xs text-muted">
           {favs.length ? "Mit ◀ ▶ die Reihenfolge ändern. Im Vollbild mit ⭐ hinzufügen oder entfernen." : "Noch keine Favoriten – im Vollbild auf ☆ tippen."}
@@ -145,8 +255,20 @@ export default function GalleryPage() {
       <div className="grid grid-cols-3 gap-1.5">
         {shown.map((it, i) => (
           <div key={it.promptId + it.subfolder + it.filename} className="overflow-hidden rounded-lg bg-card">
-          <button type="button" className="relative block aspect-square w-full overflow-hidden" onClick={() => setOpen(i)}>
+          <button
+            type="button"
+            className={`relative block aspect-square w-full overflow-hidden ${manage && selected.has(keyOf(it)) ? "ring-4 ring-inset ring-accent" : ""}`}
+            onClick={() => (manage ? toggleSelect(it) : setOpen(i))}
+          >
             {favKeys.has(keyOf(it)) && kind !== "fav" && <span className="absolute left-1 top-1 z-10 text-sm drop-shadow">⭐</span>}
+            {manage && (
+              <span
+                className={`absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold ${selected.has(keyOf(it)) ? "border-accent bg-accent text-white" : "border-white/80 bg-black/40"}`}
+                aria-hidden
+              >
+                {selected.has(keyOf(it)) ? "✓" : ""}
+              </span>
+            )}
             {it.kind === "video" ? (
               <>
                 <video src={viewUrl(it) + "#t=0.1"} muted playsInline preload="metadata" className="h-full w-full object-cover" />
@@ -171,6 +293,29 @@ export default function GalleryPage() {
           </div>
         ))}
       </div>
+
+      {manage && (
+        <div className="sticky-action">
+          <div className="card flex items-center gap-2 p-2 shadow-lg shadow-black/40">
+            <button
+              type="button"
+              className="btn btn-ghost min-h-11 px-3 text-sm"
+              onClick={() => setSelected(selectedItems.length === shown.length ? new Set() : new Set(shown.map(keyOf)))}
+            >
+              {selectedItems.length === shown.length && shown.length ? "Keine" : "Alle"}
+            </button>
+            <span className="min-w-0 flex-1 text-sm">{selectedItems.length} ausgewählt</span>
+            <button type="button" className="btn btn-ghost min-h-11 px-3" disabled={!selectedItems.length || busy} onClick={downloadSelected} aria-label="Herunterladen">
+              ⬇{selectedItems.length > 1 ? " ZIP" : ""}
+            </button>
+            {canDelete && (
+              <button type="button" className="btn btn-danger min-h-11 px-3" disabled={!selectedItems.length || busy} onClick={deleteSelected} aria-label="Löschen">
+                {busy ? "…" : "🗑"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {current && (
         <div
@@ -220,7 +365,7 @@ export default function GalleryPage() {
                 className="btn btn-danger px-3"
                 aria-label="Löschen"
                 onClick={async () => {
-                  if (!window.confirm(`„${current.filename}“ wirklich vom Pod löschen?`)) return;
+                  if (!window.confirm(`„${current.filename}“ wirklich löschen?`)) return;
                   setDeleteError(null);
                   try {
                     await api(`/api/files?${new URLSearchParams({ filename: current.filename, subfolder: current.subfolder })}`, { method: "DELETE" });

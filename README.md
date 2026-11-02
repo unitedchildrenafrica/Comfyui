@@ -102,6 +102,8 @@ Die App nutzt dafür `CIVITAI_TOKEN` und `HF_TOKEN` aus dem Pod-Template und spe
 
 In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **„📦 Ordner als ZIP“**. Die App packt alle Bilder/Videos des Ordners (inkl. Unterordner) direkt aus dem ComfyUI-Ausgabeordner (`OUTPUT_DIR`, Standard `/workspace/ComfyUI/output`). Damit sind auch große Batches komplett dabei. „Alle Ordner“ lädt alles.
 
+**Galerie verwalten:** „Verwalten“ oben rechts → Bilder/Videos antippen (oder „Alle“) → **⬇** lädt eins direkt bzw. mehrere als ZIP, **🗑** löscht die Auswahl. Im Verwalten-Modus gibt es außerdem **„Ordner … löschen“** (gewählter Ordner) bzw. **„Ganze Galerie löschen“** (Alle Ordner) – zur Sicherheit nur nach Eintippen von `LÖSCHEN`. Im Server-Modus wird auf dem Server gelöscht; der Spiegel holt gelöschte Dateien nicht erneut vom Pod.
+
 ### 6b. Notizen (Aufträge, Posten, Charaktere …)
 
 Am PC/Mac steht links eine Notizen-Leiste (Breite am Rand ziehen, Doppelklick = Standardbreite, „einklappen“ blendet sie aus). Am Handy ist es der Tab **📝 Notizen**. Gespeichert wird in `DATA_DIR/notes/` – im Server-Modus also auf dem eigenen Server, unabhängig vom Pod.
