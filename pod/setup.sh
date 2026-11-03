@@ -256,19 +256,36 @@ FingeringSelf.safetensors 3342542 3229287
 LORAS
 fi
 
+step "7c. SageAttention (optional schnellere Attention)"
+# Version 1 ist reines Triton – läuft auf 4090 und 5090 ohne Kompilieren. Eingeschaltet wird sie
+# erst mit „bash /workspace/start_comfy.sh … sage“ (oder SAGE=1 beim Setup).
+$P -m pip install -q "sageattention==1.0.6" 2>/dev/null && $P -c "import sageattention" 2>/dev/null &&
+  echo ">> SageAttention installiert (Schalter: start_comfy.sh bild sage)" || echo ">> SageAttention nicht installierbar – egal, läuft auch ohne"
+
 step "8. ComfyUI starten (Port $PORT)"
-# Speicher-Profil: „bild“ = Modelle bleiben zwischen Jobs geladen (schnell bei vielen Bildern),
-# „video“ = nach jedem Job alles entladen, kein Cache (wie im ursprünglichen H3-Skript – spart
-# RAM/VRAM bei den großen Video-Modellen, lädt dafür das Modell bei jedem Job neu).
-DEFAULT_PROFILE=bild; [ "$MODE" = video ] && DEFAULT_PROFILE=video
+# Speicher-Profil: „bild“ = Modelle bleiben zwischen Jobs im RAM/VRAM (schnell – auch bei Videos,
+# wenn genug RAM da ist), „video“ = nach jedem Job alles entladen, kein Cache (wie im
+# ursprünglichen H3-Skript – für Pods mit wenig RAM, lädt dafür jedes Mal neu von der Platte).
+RAM_GB=$(awk '/MemTotal/ {print int($2/1048576)}' /proc/meminfo)
+LIMIT=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo max)
+[ "$LIMIT" != max ] && [ "$LIMIT" -gt 0 ] 2>/dev/null && RAM_GB=$(( LIMIT / 1073741824 ))
+DEFAULT_PROFILE=bild
+if [ "$MODE" != bilder ] && [ "${RAM_GB:-0}" -lt 64 ]; then DEFAULT_PROFILE=video; fi
+echo ">> RAM ${RAM_GB} GB → Speicher-Profil $DEFAULT_PROFILE"
+DEFAULT_SAGE=""; [ "${SAGE:-0}" = 1 ] && DEFAULT_SAGE=sage
 cat > /workspace/start_comfy.sh << EOF
 #!/usr/bin/env bash
-# bash /workspace/start_comfy.sh [bild|video]   (ohne Angabe: $DEFAULT_PROFILE)
+# bash /workspace/start_comfy.sh [bild|video] [sage]   (ohne Angabe: $DEFAULT_PROFILE $DEFAULT_SAGE)
 PROFILE="\${1:-$DEFAULT_PROFILE}"
+SAGE="\${2-$DEFAULT_SAGE}"
 case "\$PROFILE" in
   video) MEM="--disable-smart-memory --cache-none --reserve-vram 1.0" ;;
   *)     PROFILE=bild; MEM="--reserve-vram 1.0" ;;
 esac
+if [ "\$SAGE" = sage ]; then
+  if $P -c "import sageattention" 2>/dev/null; then MEM="\$MEM --use-sage-attention"; PROFILE="\$PROFILE + SageAttention"
+  else echo "SageAttention ist nicht installiert – starte ohne"; fi
+fi
 supervisorctl stop comfyui >/dev/null 2>&1
 pkill -f unbuffer 2>/dev/null; pkill -f main.py 2>/dev/null; sleep 4
 sed -i 's/{"crf": q, "preset": "medium"}/{"crf": q, "preset": "veryfast", "threads": "$THREADS"}/' "$H" 2>/dev/null
