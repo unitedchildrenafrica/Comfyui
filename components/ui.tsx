@@ -51,7 +51,7 @@ export function Select({
   return (
     <select className="input" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       {!value && !opts.some((o) => o.value === "") && <option value="">{placeholder ?? "– auswählen –"}</option>}
-      {missing && <option value={value}>{value} (nicht auf dem Pod)</option>}
+      {missing && <option value={value}>{opts.length ? `${value} (nicht auf dem Pod)` : value}</option>}
       {opts.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}

@@ -82,7 +82,12 @@ export async function getNodeInfo(cls: string, maxAgeMs = 30_000) {
   const hit = infoCache.get(cls);
   if (hit && Date.now() - hit.at < maxAgeMs) return hit.data;
   const res = await comfyFetch(`/object_info/${encodeURIComponent(cls)}`);
-  const json = res.ok ? ((await res.json()) as ObjectInfo) : {};
+  if (!res.ok) {
+    // z. B. ComfyUI startet gerade neu – nicht als „gibt es nicht“ merken
+    await res.body?.cancel().catch(() => {});
+    throw new ComfyUnavailableError(undefined, `ComfyUI antwortet nicht (HTTP ${res.status}) – startet es gerade neu?`);
+  }
+  const json = (await res.json()) as ObjectInfo;
   const data = json[cls] ?? null;
   infoCache.set(cls, { at: Date.now(), data });
   return data;

@@ -25,5 +25,13 @@ export function useOptions() {
     load();
   }, [load]);
 
+  // Kam nichts an (ComfyUI startet gerade, Pod wechselt), alle 10 s still nachfragen
+  const incomplete = !!error || (!!options && !options.samplers.length);
+  useEffect(() => {
+    if (!incomplete) return;
+    const t = setInterval(() => load(), 10_000);
+    return () => clearInterval(t);
+  }, [incomplete, load]);
+
   return { options, error, loading, reload: () => load(true) };
 }
