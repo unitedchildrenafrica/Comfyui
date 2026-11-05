@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.MOCK_PORT || 8188);
+const inputs = new Set();
+let uploads = 0;
 const combo = (values) => [values];
 const NODES = {
   CheckpointLoaderSimple: { ckpt_name: combo(["wai_illustrious_v10.safetensors", "wai_illustrious_v17.safetensors", "ponyDiffusionV6XL.safetensors"]) },
@@ -215,6 +217,8 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === "/view") {
     const f = url.searchParams.get("filename") || "";
+    // input-Ordner wie auf einem echten Pod: nur, was hochgeladen wurde (Neustart = neuer Pod)
+    if (url.searchParams.get("type") === "input" && !inputs.has(f)) return json(res, { error: "not found" }, 404);
     if (/\.(mp4|wav|mp3)$/.test(f)) { res.writeHead(200, { "content-type": f.endsWith(".mp4") ? "video/mp4" : "audio/wav" }); return res.end(Buffer.alloc(16)); }
     res.writeHead(200, { "content-type": "image/png" });
     return res.end(PNG);
@@ -222,8 +226,11 @@ const server = http.createServer(async (req, res) => {
   if (p === "/upload/image" && req.method === "POST") {
     const raw = (await body(req)).toString("latin1");
     const name = raw.match(/filename="([^"]+)"/)?.[1] ?? "upload.png";
+    inputs.add(name);
+    uploads++;
     return json(res, { name, subfolder: "", type: "input" });
   }
+  if (p === "/_mock/uploads") return json(res, { uploads, inputs: [...inputs] });
   json(res, { error: "not found" }, 404);
 });
 

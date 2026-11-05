@@ -7,6 +7,7 @@ import { parseVideoBatch, settingsForItem } from "../h3batch";
 import type { H3Settings, ImageSettings, JobRecord, PromptItem } from "../types";
 import { ComfyPromptError, nodeExists, queuePrompt } from "./comfy";
 import { getClientId, registerPromptNodes } from "./events";
+import { ensureRefsOnPod } from "./refs";
 import { getAppSettings, saveBatch, saveJob } from "./store";
 
 export class BatchParseError extends Error {
@@ -105,6 +106,7 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
 }
 
 export async function submitVideoJob(settings: H3Settings) {
+  await ensureRefsOnPod(settings.refs ?? []);
   const seed = settings.seed ?? randomSeed();
   const wf = buildH3({ settings, seed });
   const promptId = await queuePrompt(wf, getClientId());
@@ -130,6 +132,7 @@ export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResu
   const { items, errors } = parseVideoBatch(settings.batchText ?? "", { mode: settings.mode, noDialogue: settings.noDialogue });
   if (errors.length) throw new BatchParseError(errors);
   if (!items.length) throw new BatchParseError([{ block: 0, message: "Keine Prompts gefunden" }]);
+  await ensureRefsOnPod(settings.refs ?? []);
   const clientId = getClientId();
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };

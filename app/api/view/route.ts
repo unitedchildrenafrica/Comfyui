@@ -4,6 +4,7 @@ import { comfyFetch } from "@/lib/server/comfy";
 import { errorResponse } from "@/lib/server/http";
 import { serveFile, thumbnail } from "@/lib/server/localFile";
 import { serverMode } from "@/lib/server/podLink";
+import { refCopyPath } from "@/lib/server/refs";
 import { resolveOutputFile } from "@/lib/server/zip";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,12 @@ export async function GET(req: NextRequest) {
         }
         return await serveFile(abs, req, disposition);
       }
+    }
+    // Server-Modus: Referenzen (input) aus der Kopie auf dem Server – auch ohne bzw. mit neuem Pod
+    if (serverMode() && qs.get("type") === "input") {
+      const rel = [qs.get("subfolder"), qs.get("filename")].filter(Boolean).join("/");
+      const abs = refCopyPath(rel);
+      if (abs && (await fs.stat(abs).then((s) => s.isFile(), () => false))) return await serveFile(abs, req, {});
     }
     const headers: Record<string, string> = {};
     const range = req.headers.get("range");
