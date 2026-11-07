@@ -3,7 +3,7 @@
 export const MODEL_TYPES = {
   checkpoint: { label: "Checkpoint", folder: "checkpoints" },
   lora: { label: "LoRA", folder: "loras" },
-  unet: { label: "UNet / Diffusion (z. B. Anima)", folder: "diffusion_models" },
+  unet: { label: "UNet / Diffusion (z. B. Anima, H3-Video-Modell)", folder: "diffusion_models" },
   vae: { label: "VAE", folder: "vae" },
   text_encoder: { label: "Text-Encoder", folder: "text_encoders" },
   upscaler: { label: "Upscaler", folder: "upscale_models" },
@@ -63,8 +63,9 @@ export function civitaiType(modelType: string, fileType: string, baseModel: stri
   if (t === "vae") return "vae";
   if (t === "upscaler") return "upscaler";
   if (t === "textualinversion") return "embedding";
-  // Anima wird bei Civitai als „Checkpoint“ geführt, ist aber nur ein UNet
-  if (/anima/i.test(baseModel)) return "unet";
+  // Anima und MiniMax H3 werden bei Civitai als „Checkpoint“ geführt, sind aber nur das
+  // Diffusions-Modell (UNETLoader → diffusion_models)
+  if (/anima|minimax|(^|\W)h3(\W|$)/i.test(baseModel)) return "unet";
   return "checkpoint";
 }
 

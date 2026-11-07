@@ -59,3 +59,12 @@ describe("Typen und Dateinamen", () => {
     expect(sanitizeModelFilename(".hidden.safetensors")).toBeNull();
   });
 });
+
+describe("H3-Video-Modelle", () => {
+  it("landen als Diffusions-Modell, nicht als Checkpoint", async () => {
+    const { civitaiType } = await import("@/lib/modelLinks");
+    expect(civitaiType("Checkpoint", "Model", "MiniMax H3")).toBe("unet");
+    expect(civitaiType("Checkpoint", "Model", "Illustrious")).toBe("checkpoint");
+    expect(civitaiType("LORA", "Model", "MiniMax H3")).toBe("lora");
+  });
+});
