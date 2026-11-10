@@ -78,7 +78,7 @@ curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.gith
 
 Optionen: `WITH_QWEN=1` (baut llama-cpp-python für den Qwen-Prompt-Schreiber), `SKIP_FRONTEND=1` (ohne App/Tunnel).
 
-**Speicher-Profil von ComfyUI:** `bash /workspace/start_comfy.sh bild` lässt Modelle zwischen den Jobs im RAM/VRAM (schnell – bei Bildern und, mit genug RAM, auch bei Videos). `bash /workspace/start_comfy.sh video` entlädt nach jedem Job alles und cacht nichts (wie im ursprünglichen H3-Skript – für Pods mit wenig RAM). Standard: `bild`; nur im Modus „video“/„alles“ auf Pods mit unter 64 GB RAM `video`.
+**Speicher-Profil von ComfyUI:** `bash /workspace/start_comfy.sh bild` lässt Modelle zwischen den Jobs im RAM/VRAM (schnell – bei Bildern und, mit genug RAM, auch bei Videos). `bash /workspace/start_comfy.sh video` entlädt nach jedem Job alles und cacht nichts (wie im ursprünglichen H3-Skript – für Pods mit wenig RAM). Standard: `bild`; nur im Modus „video“/„alles“ auf Pods mit unter ~56 GiB RAM (Vast zeigt das als ~60 GB) `video`.
 
 **SageAttention (optional):** schnellere Attention, vor allem bei Videos – rechnet intern mit etwas weniger Genauigkeit, Unterschiede sind meist kaum sichtbar. Wird bei jedem Setup installiert (Version 1, läuft auf 4090/5090 ohne Kompilieren), aber nur mit `sage` eingeschaltet: `bash /workspace/start_comfy.sh bild sage` (wieder aus: `… bild nosage`). Mit `SAGE=1 bash /workspace/setup.sh …` ist es von Anfang an an.
 

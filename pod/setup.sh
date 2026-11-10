@@ -270,7 +270,7 @@ RAM_GB=$(awk '/MemTotal/ {print int($2/1048576)}' /proc/meminfo)
 LIMIT=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo max)
 [ "$LIMIT" != max ] && [ "$LIMIT" -gt 0 ] 2>/dev/null && RAM_GB=$(( LIMIT / 1073741824 ))
 DEFAULT_PROFILE=bild
-if [ "$MODE" != bilder ] && [ "${RAM_GB:-0}" -lt 64 ]; then DEFAULT_PROFILE=video; fi
+if [ "$MODE" != bilder ] && [ "${RAM_GB:-0}" -lt 56 ]; then DEFAULT_PROFILE=video; fi
 echo ">> RAM ${RAM_GB} GB → Speicher-Profil $DEFAULT_PROFILE"
 DEFAULT_SAGE=""; [ "${SAGE:-0}" = 1 ] && DEFAULT_SAGE=sage
 cat > /workspace/start_comfy.sh << EOF
