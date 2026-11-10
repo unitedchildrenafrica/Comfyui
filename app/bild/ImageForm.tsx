@@ -273,7 +273,7 @@ export function ImageForm() {
           </>
         )}
         <Field label="LoRAs" hint={isAnima ? "Illustrious-/SDXL-LoRAs funktionieren nicht mit Anima." : undefined}>
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="image" use={o?.loraUse} />
+          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="image" use={o?.loraUse} onReload={reload} />
         </Field>
       </Section>
 
@@ -394,7 +394,7 @@ export function ImageForm() {
       </Section>
 
       {submitError && (
-        <ErrorBox>
+        <ErrorBox focus>
           {submitError.comfyDown ? "ComfyUI antwortet nicht – bitte gleich nochmal versuchen." : submitError.message}
           {submitError.batchErrors && (
             <ul className="mt-2 space-y-1">

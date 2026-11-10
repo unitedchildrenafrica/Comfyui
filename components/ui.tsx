@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 export function Section({ title, children, defaultOpen = false, right }: { title: string; children: ReactNode; defaultOpen?: boolean; right?: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -150,8 +150,17 @@ export function Segmented<T extends string | number>({ value, options, onChange 
   );
 }
 
-export function ErrorBox({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{children}</div>;
+export function ErrorBox({ children, focus = false }: { children: ReactNode; focus?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // focus: beim Erscheinen in den sichtbaren Bereich scrollen (sonst übersieht man Fehler unten im Formular)
+  useEffect(() => {
+    if (focus) ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focus]);
+  return (
+    <div ref={ref} className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+      {children}
+    </div>
+  );
 }
 
 export function WarnBox({ children }: { children: ReactNode }) {

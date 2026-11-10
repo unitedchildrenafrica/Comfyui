@@ -335,7 +335,7 @@ export function VideoForm() {
           <Select value={s.textEncoder} onChange={(v) => set({ textEncoder: v })} options={o?.clips ?? []} />
         </Field>
         <Field label="LoRAs">
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="video" use={o?.loraUse} max={H3_MAX_LORAS} />
+          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="video" use={o?.loraUse} max={H3_MAX_LORAS} onReload={reload} />
         </Field>
       </Section>
 
@@ -396,7 +396,7 @@ export function VideoForm() {
         <WarnBox>Audio-Referenz prüfen (sonst bricht der Job ab): {audioRefWarnings(s.refs).join(" ")}</WarnBox>
       )}
       {submitError && (
-        <ErrorBox>
+        <ErrorBox focus>
           {submitError.comfyDown ? "ComfyUI antwortet nicht – bitte gleich nochmal versuchen." : submitError.message}
           {submitError.nodeErrors && <NodeErrors errors={submitError.nodeErrors} />}
           {submitError.batchErrors && (
