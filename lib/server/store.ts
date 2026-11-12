@@ -123,7 +123,11 @@ export async function getFavorites(): Promise<FavoriteItem[]> {
 export async function saveFavorites(list: FavoriteItem[]) {
   // doppelte Einträge entfernen, Reihenfolge beibehalten
   const seen = new Set<string>();
-  const clean = list.filter((f) => f?.filename && !seen.has(favKey(f)) && seen.add(favKey(f)));
+  // Liegt ein Favorit schon im Favoriten-Speicher, bleibt das so – auch wenn der Browser noch den alten Stand schickt
+  const stored = new Set((await getFavorites()).filter((f) => f.type === "favorite").map(favKey));
+  const clean = list
+    .filter((f) => f?.filename && !seen.has(favKey(f)) && seen.add(favKey(f)))
+    .map((f) => (stored.has(favKey(f)) ? { ...f, type: "favorite" } : f));
   await writeJson(config.dataPath("favorites.json"), clean);
   return clean;
 }

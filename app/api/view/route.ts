@@ -5,6 +5,7 @@ import { errorResponse } from "@/lib/server/http";
 import { serveFile, thumbnail } from "@/lib/server/localFile";
 import { serverMode } from "@/lib/server/podLink";
 import { refCopyPath } from "@/lib/server/refs";
+import { favStorePath } from "@/lib/server/favStore";
 import { resolveOutputFile } from "@/lib/server/zip";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,18 @@ export async function GET(req: NextRequest) {
         }
         return await serveFile(abs, req, disposition);
       }
+    }
+    // Gesicherte Favoriten (aus der Galerie gelöscht) kommen aus dem Favoriten-Speicher
+    if (p.get("type") === "favorite") {
+      const abs = favStorePath(p.get("subfolder") ?? "", p.get("filename") ?? "");
+      if (!abs || !(await fs.stat(abs).then((s) => s.isFile(), () => false))) return new Response("Nicht gefunden", { status: 404 });
+      if (preview && /\.(png|jpe?g|webp)$/i.test(abs)) {
+        const q = Math.min(100, Math.max(1, Number(preview.split(";")[1]) || 70));
+        const buf = await thumbnail(abs, q).catch(() => null);
+        if (buf) return new Response(new Uint8Array(buf), { headers: { "content-type": "image/webp", "cache-control": "private, max-age=86400" } });
+      }
+      const name = (p.get("filename") ?? "").replace(/"/g, "");
+      return await serveFile(abs, req, p.get("download") ? { "content-disposition": `attachment; filename="${name}"` } : {});
     }
     // Server-Modus: Referenzen (input) aus der Kopie auf dem Server – auch ohne bzw. mit neuem Pod
     if (serverMode() && qs.get("type") === "input") {

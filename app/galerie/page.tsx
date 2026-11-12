@@ -49,12 +49,15 @@ export default function GalleryPage() {
       setError(err as ApiError);
     }
   }, []);
-  useEffect(() => {
-    load();
+  const loadFavs = useCallback(() => {
     api<{ items: Item[] }>("/api/favorites")
       .then((r) => setFavs(r.items))
       .catch(() => {});
-  }, [load]);
+  }, []);
+  useEffect(() => {
+    load();
+    loadFavs();
+  }, [load, loadFavs]);
 
   // --- Favoriten: geordnete Liste, wird komplett auf dem Pod gespeichert ---------------
   const keyOf = (f: { filename: string; subfolder: string }) => `${f.subfolder}/${f.filename}`;
@@ -120,7 +123,8 @@ export default function GalleryPage() {
   const forget = (gone: { filename: string; subfolder: string }[]) => {
     const keys = new Set(gone.map(keyOf));
     setItems((list) => (list ?? []).filter((i) => !keys.has(keyOf(i))));
-    setFavs((list) => list.filter((f) => !keys.has(keyOf(f))));
+    // Favoriten bleiben erhalten (liegen jetzt im Favoriten-Speicher)
+    loadFavs();
     setSelected(new Set());
   };
   const downloadSelected = () => {
@@ -141,13 +145,17 @@ export default function GalleryPage() {
   };
   const deleteSelected = async () => {
     const list = selectedItems.map((i) => ({ filename: i.filename, subfolder: i.subfolder }));
-    if (!list.length || !window.confirm(`${list.length} ${list.length === 1 ? "Datei" : "Dateien"} wirklich löschen?`)) return;
+    const favCount = selectedItems.filter((i) => favKeys.has(keyOf(i))).length;
+    const favNote = favCount ? `\n\n${favCount} davon ${favCount === 1 ? "ist ein Favorit und bleibt" : "sind Favoriten und bleiben"} unter ⭐ erhalten.` : "";
+    if (!list.length || !window.confirm(`${list.length} ${list.length === 1 ? "Datei" : "Dateien"} wirklich löschen?${favNote}`)) return;
     setBusy(true);
     setManageMsg(null);
     try {
-      const r = await api<{ deleted: number; failed: string[] }>("/api/files", { method: "POST", json: { action: "delete", files: list } });
+      const r = await api<{ deleted: number; failed: string[]; keptFavorites?: number }>("/api/files", { method: "POST", json: { action: "delete", files: list } });
       forget(list);
-      setManageMsg(`${r.deleted} gelöscht${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen: ${r.failed[0]}` : ""}`);
+      setManageMsg(
+        `${r.deleted} gelöscht${r.keptFavorites ? ` · ${r.keptFavorites === 1 ? "1 Favorit bleibt" : `${r.keptFavorites} Favoriten bleiben`} unter ⭐` : ""}${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen: ${r.failed[0]}` : ""}`,
+      );
       loadZipInfo();
     } catch (err) {
       setManageMsg((err as Error).message);
@@ -158,25 +166,27 @@ export default function GalleryPage() {
   const deleteFolderAll = async () => {
     const what = folder ? `den Ordner „${folder}“` : "die GANZE Galerie (alle Ordner)";
     const n = zipInfo?.files ?? 0;
-    const typed = window.prompt(`Damit löschst du ${what} – ${n} Dateien, Bilder und Videos. Das lässt sich nicht rückgängig machen.\n\nZum Bestätigen LÖSCHEN eintippen:`);
+    const typed = window.prompt(
+      `Damit löschst du ${what} – ${n} Dateien, Bilder und Videos. Das lässt sich nicht rückgängig machen. Favoriten bleiben unter ⭐ erhalten.\n\nZum Bestätigen LÖSCHEN eintippen:`,
+    );
     if (typed?.trim().toUpperCase() !== "LÖSCHEN") return;
     setBusy(true);
     setManageMsg(null);
     try {
-      const r = await api<{ deleted: number; failed: string[] }>("/api/files", {
+      const r = await api<{ deleted: number; failed: string[]; keptFavorites?: number }>("/api/files", {
         method: "POST",
         json: { action: "delete-folder", folder, all: !folder },
       });
-      setManageMsg(`${r.deleted} ${r.deleted === 1 ? "Datei" : "Dateien"} gelöscht${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen` : ""}`);
+      setManageMsg(
+        `${r.deleted} ${r.deleted === 1 ? "Datei" : "Dateien"} gelöscht${r.keptFavorites ? ` · ${r.keptFavorites === 1 ? "1 Favorit bleibt" : `${r.keptFavorites} Favoriten bleiben`} unter ⭐` : ""}${r.failed.length ? ` · ${r.failed.length} fehlgeschlagen` : ""}`,
+      );
       setSelected(new Set());
       setFolder("");
       await load();
       api<{ folders: string[] }>("/api/zip?list=1")
         .then((x) => setDiskFolders(x.folders))
         .catch(() => {});
-      api<{ items: Item[] }>("/api/favorites")
-        .then((x) => setFavs(x.items))
-        .catch(() => {});
+      loadFavs();
     } catch (err) {
       setManageMsg((err as Error).message);
     } finally {
@@ -358,20 +368,44 @@ export default function GalleryPage() {
             )}
           </div>
           {deleteError && <p className="px-3 text-center text-sm text-red-300">{deleteError}</p>}
-          <div className={`grid gap-2 p-3 ${canDelete ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-2"}`}>
-            {canDelete && (
+          <div className={`grid gap-2 p-3 ${canDelete || kind === "fav" ? "grid-cols-[auto_1fr_1fr]" : "grid-cols-2"}`}>
+            {kind === "fav" && (
+              <button
+                type="button"
+                className="btn btn-danger px-3"
+                aria-label="Aus Favoriten löschen"
+                onClick={() => {
+                  const onlyHere = current.type === "favorite";
+                  if (
+                    !window.confirm(
+                      onlyHere
+                        ? `„${current.filename}“ aus den Favoriten löschen? Es ist nur noch hier gespeichert und danach endgültig weg.`
+                        : `„${current.filename}“ aus den Favoriten entfernen? In der Galerie bleibt es.`,
+                    )
+                  )
+                    return;
+                  const gone = current;
+                  saveFavs(favs.filter((f) => keyOf(f) !== keyOf(gone)));
+                  setOpen((o) => (o === null || shown.length <= 1 ? null : Math.min(o, shown.length - 2)));
+                }}
+              >
+                🗑
+              </button>
+            )}
+            {canDelete && kind !== "fav" && (
               <button
                 type="button"
                 className="btn btn-danger px-3"
                 aria-label="Löschen"
                 onClick={async () => {
-                  if (!window.confirm(`„${current.filename}“ wirklich löschen?`)) return;
+                  const isFav = favKeys.has(keyOf(current));
+                  if (!window.confirm(`„${current.filename}“ wirklich löschen?${isFav ? "\n\nEs ist ein Favorit und bleibt unter ⭐ erhalten." : ""}`)) return;
                   setDeleteError(null);
                   try {
                     await api(`/api/files?${new URLSearchParams({ filename: current.filename, subfolder: current.subfolder })}`, { method: "DELETE" });
                     const gone = current;
                     setItems((list) => (list ?? []).filter((i) => !(i.filename === gone.filename && i.subfolder === gone.subfolder)));
-                    setFavs((list) => list.filter((f) => keyOf(f) !== keyOf(gone)));
+                    loadFavs();
                     // beim nächsten Bild bleiben bzw. schließen, wenn es das letzte war
                     setOpen((o) => (o === null || shown.length <= 1 ? null : Math.min(o, shown.length - 2)));
                   } catch (err) {

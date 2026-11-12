@@ -106,6 +106,8 @@ In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **�
 
 **Galerie verwalten:** „Verwalten“ oben rechts → Bilder/Videos antippen (oder „Alle“) → **⬇** lädt eins direkt bzw. mehrere als ZIP, **🗑** löscht die Auswahl. Im Verwalten-Modus gibt es außerdem **„Ordner … löschen“** (gewählter Ordner) bzw. **„Ganze Galerie löschen“** (Alle Ordner) – zur Sicherheit nur nach Eintippen von `LÖSCHEN`. Im Server-Modus wird auf dem Server gelöscht; der Spiegel holt gelöschte Dateien nicht erneut vom Pod.
 
+**Favoriten sind geschützt:** Wird ein Favorit aus der Galerie gelöscht (einzeln, Auswahl, Ordner oder „Ganze Galerie“), verschwindet er aus „Alle“ und den Ordnern, bleibt aber unter ⭐ – die Datei wandert in `DATA_DIR/favorites-files`. Endgültig weg ist er erst, wenn er unter ⭐ gelöscht bzw. der Stern entfernt wird.
+
 ### 6b. Notizen (Aufträge, Posten, Charaktere …)
 
 Am PC/Mac steht links eine Notizen-Leiste (Breite am Rand ziehen, Doppelklick = Standardbreite, „einklappen“ blendet sie aus). Am Handy ist es der Tab **📝 Notizen**. Gespeichert wird in `DATA_DIR/notes/` – im Server-Modus also auf dem eigenen Server, unabhängig vom Pod.

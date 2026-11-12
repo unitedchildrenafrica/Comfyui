@@ -4,7 +4,8 @@ import { config } from "./config";
 import { getHistory } from "./history";
 import { forgetMirroredMany } from "./mirror";
 import { serverMode } from "./podLink";
-import { removeFavorites } from "./store";
+import { keepFavoriteFile } from "./favStore";
+import { favKey, getFavorites, saveFavorites } from "./store";
 import { listMedia, resolveOutputFile, resolveOutputFolder } from "./zip";
 
 // Löschen in der Galerie: einzelne Dateien, ganze Ordner oder alles. Im Server-Modus bekommen
@@ -17,13 +18,26 @@ export interface FileRef {
 
 const MAX_FILES = 20_000;
 
-export async function deleteFiles(list: FileRef[]): Promise<{ deleted: number; failed: string[] }> {
+export async function deleteFiles(list: FileRef[]): Promise<{ deleted: number; failed: string[]; keptFavorites: number }> {
   const failed: string[] = [];
   const done: FileRef[] = [];
+  // Favoriten werden nie mitgelöscht: Datei wandert in den Favoriten-Speicher
+  const favs = await getFavorites();
+  const favByKey = new Map(favs.map((x) => [favKey(x), x]));
+  let kept = 0;
   for (const f of list.slice(0, MAX_FILES)) {
     const abs = resolveOutputFile(f.subfolder ?? "", f.filename ?? "");
     if (!abs) {
       failed.push(`${f.subfolder}/${f.filename}: ungültig`);
+      continue;
+    }
+    const fav = favByKey.get(favKey(f));
+    if (fav && fav.type !== "favorite") {
+      if (await keepFavoriteFile(f.subfolder, f.filename)) {
+        fav.type = "favorite";
+        kept++;
+        done.push({ filename: f.filename, subfolder: f.subfolder });
+      } else failed.push(`${f.subfolder}/${f.filename}: Favorit konnte nicht gesichert werden – nicht gelöscht`);
       continue;
     }
     try {
@@ -36,9 +50,9 @@ export async function deleteFiles(list: FileRef[]): Promise<{ deleted: number; f
     }
     done.push({ filename: f.filename, subfolder: f.subfolder });
   }
-  await removeFavorites(done);
+  if (kept) await saveFavorites(favs);
   if (serverMode()) await forgetMirroredMany(done);
-  return { deleted: done.length, failed };
+  return { deleted: done.length, failed, keptFavorites: kept };
 }
 
 /** Leere Unterordner entfernen (der Ordner selbst nur, wenn er nicht der Ausgabeordner ist). */
@@ -54,7 +68,7 @@ async function pruneEmpty(dir: string, root: string) {
 }
 
 /** Alle Bilder/Videos eines Ordners löschen. folder "" = die ganze Galerie. */
-export async function deleteFolder(folder: string): Promise<{ deleted: number; failed: string[] }> {
+export async function deleteFolder(folder: string): Promise<{ deleted: number; failed: string[]; keptFavorites: number }> {
   const dir = resolveOutputFolder(folder);
   if (!dir) throw new Error("Ungültiger Ordner");
   const root = path.resolve(config.outputDir);
