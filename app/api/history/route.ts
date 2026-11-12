@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import type { NextRequest } from "next/server";
 import { type MediaFile, getHistory } from "@/lib/server/history";
 import { errorResponse } from "@/lib/server/http";
-import { deletedKeys, listMirrored } from "@/lib/server/mirror";
+import { deletedMap, isDeleted, listMirrored } from "@/lib/server/mirror";
 import { serverMode } from "@/lib/server/podLink";
 import { getJobs } from "@/lib/server/store";
 import { outputDirAvailable, resolveOutputFile } from "@/lib/server/zip";
@@ -38,9 +38,9 @@ export async function GET(req: NextRequest) {
     if (server) {
       // Gespiegelte Dateien (auch von gelöschten/alten Pods) + Live-Einträge, die noch nicht kopiert sind
       const mirrored = await listMirrored();
-      const deleted = await deletedKeys();
+      const deletedAt = await deletedMap();
       const have = new Set(mirrored.map(key));
-      const live = rows.filter((r) => !have.has(key(r.file)) && !deleted.has(key(r.file)));
+      const live = rows.filter((r) => !have.has(key(r.file)) && !isDeleted(deletedAt, r.file, r.timestamp));
       rows = [
         ...mirrored.map((m) => ({ file: { filename: m.filename, subfolder: m.subfolder, type: m.type, kind: m.kind }, promptId: m.promptId, timestamp: m.timestamp, durationMs: m.durationMs })),
         ...live,

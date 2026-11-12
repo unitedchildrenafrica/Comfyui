@@ -25,12 +25,20 @@ interface Index {
   files: Record<string, MirroredFile>;
   /** komplett gespiegelte prompt_ids */
   prompts: string[];
-  /** auf dem Server gelöscht → nicht erneut vom Pod holen und nicht mehr anzeigen */
+  /** alt (nur Dateiname) – wird beim Laden verworfen, siehe deletedAt */
   deleted?: string[];
+  /**
+   * Auf dem Server gelöscht: Schlüssel → Zeitpunkt des Löschens (ms). Nicht erneut vom Pod holen
+   * und nicht anzeigen – aber nur, was VOR dem Löschen entstanden ist. Ein neuer Pod zählt wieder
+   * ab 00001 und erzeugt dieselben Dateinamen; die müssen sichtbar bleiben.
+   */
+  deletedAt?: Record<string, number>;
 }
 
 interface State {
   index: Index | null;
+  /** nach Neustart/Umstellung einmal einen größeren Teil des Verlaufs nachholen */
+  catchUp?: boolean;
   running: boolean;
   timer: ReturnType<typeof setInterval> | null;
   saveTimer: ReturnType<typeof setTimeout> | null;
@@ -49,8 +57,23 @@ async function index(): Promise<Index> {
     } catch {
       st.index = { files: {}, prompts: [] };
     }
+    const idx = st.index!;
+    if (idx.deleted) {
+      // Alte Vermerke ohne Zeit haben neue Bilder mit gleichem Namen versteckt → verwerfen und
+      // die letzten Jobs noch einmal prüfen, damit versteckte Bilder nachgeholt werden
+      delete idx.deleted;
+      idx.prompts = [];
+      st.catchUp = true;
+      saveSoon();
+    }
   }
   return st.index!;
+}
+
+/** Datei gilt als gelöscht, wenn sie nicht nach dem Löschen neu entstanden ist */
+export function isDeleted(deletedAt: Record<string, number>, f: { subfolder: string; filename: string }, timestamp: number | null | undefined) {
+  const at = deletedAt[key(f)];
+  return at !== undefined && (timestamp ?? 0) <= at;
 }
 
 function saveSoon() {
@@ -80,9 +103,9 @@ async function download(f: { filename: string; subfolder: string; type: string }
 export async function mirrorEntry(e: HistoryEntry): Promise<boolean> {
   const idx = await index();
   let ok = true;
-  const deleted = new Set(idx.deleted ?? []);
+  const deletedAt = idx.deletedAt ?? {};
   for (const f of e.files) {
-    if (f.type !== "output" || f.kind === "audio" || deleted.has(key(f))) continue;
+    if (f.type !== "output" || f.kind === "audio" || isDeleted(deletedAt, f, e.timestamp)) continue;
     const dest = resolveOutputFile(f.subfolder, f.filename);
     if (!dest) continue;
     try {
@@ -114,8 +137,11 @@ export async function mirrorPending() {
   try {
     const idx = await index();
     const done = new Set(idx.prompts);
-    const entries = (await getHistory(60)).filter((e) => e.status === "success" && e.files.length && !done.has(e.promptId));
+    // Beim ersten Durchlauf nach dem Start (oder nach der Umstellung) weit zurück, danach nur die letzten
+    const limit = st.catchUp === false ? 60 : 2000;
+    const entries = (await getHistory(limit)).filter((e) => e.status === "success" && e.files.length && !done.has(e.promptId));
     for (const e of entries) await mirrorEntry(e);
+    st.catchUp = false;
   } catch {
     // Pod gerade nicht erreichbar – beim nächsten Durchlauf wieder versuchen
   } finally {
@@ -161,11 +187,19 @@ export async function forgetMirrored(f: { subfolder: string; filename: string })
 export async function forgetMirroredMany(list: { subfolder: string; filename: string }[]) {
   if (!list.length) return;
   const idx = await index();
-  for (const f of list) delete idx.files[key(f)];
-  idx.deleted = [...new Set([...(idx.deleted ?? []), ...list.map(key)])].slice(-50000);
+  const now = Date.now();
+  const deletedAt = (idx.deletedAt ??= {});
+  for (const f of list) {
+    delete idx.files[key(f)];
+    deletedAt[key(f)] = now;
+  }
+  // nicht endlos wachsen lassen: nur die jüngsten 50 000 Vermerke behalten
+  const keys = Object.keys(deletedAt);
+  if (keys.length > 50_000) for (const k of keys.sort((a, b) => deletedAt[a] - deletedAt[b]).slice(0, keys.length - 50_000)) delete deletedAt[k];
   saveSoon();
 }
 
-export async function deletedKeys(): Promise<Set<string>> {
-  return new Set((await index()).deleted ?? []);
+/** Vermerke „gelöscht“ (Schlüssel → Zeitpunkt) für die Galerie */
+export async function deletedMap(): Promise<Record<string, number>> {
+  return (await index()).deletedAt ?? {};
 }
