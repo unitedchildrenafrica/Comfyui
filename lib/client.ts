@@ -29,8 +29,11 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   return data as T;
 }
 
-export function viewUrl(f: { filename: string; subfolder: string; type?: string }, extra: Record<string, string> = {}) {
+export function viewUrl(f: { filename: string; subfolder: string; type?: string; promptId?: string }, extra: Record<string, string> = {}) {
   const qs = new URLSearchParams({ filename: f.filename, subfolder: f.subfolder, type: f.type ?? "output", ...extra });
+  // Job-ID als Version: Ein neuer Pod zählt wieder ab 00001 und erzeugt dieselben Dateinamen –
+  // ohne sie zeigt der Browser die zwischengespeicherte Vorschau des alten Bildes.
+  if (f.promptId) qs.set("v", f.promptId);
   return `/api/view?${qs}`;
 }
 

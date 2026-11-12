@@ -361,7 +361,7 @@ export default function GalleryPage() {
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center">
             {current.kind === "video" ? (
-              <video key={current.filename} src={viewUrl(current)} controls playsInline autoPlay className="max-h-full max-w-full" />
+              <video key={current.promptId + current.filename} src={viewUrl(current)} controls playsInline autoPlay className="max-h-full max-w-full" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={viewUrl(current)} alt={current.label} className="max-h-full max-w-full object-contain" />

@@ -74,7 +74,7 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
   const failed = Object.values(results).filter((r) => r.error || r.history?.status === "error").length;
   const runningHere = state?.runningPromptId && ids.includes(state.runningPromptId);
   const allDone = done >= ids.length || cancelled;
-  const files = ids.flatMap((id) => results[id]?.history?.files ?? []);
+  const files = ids.flatMap((id) => (results[id]?.history?.files ?? []).map((f) => ({ ...f, promptId: id })));
   const durations = Object.values(results)
     .map((r) => r.history?.durationMs)
     .filter((d): d is number => typeof d === "number");
