@@ -119,7 +119,8 @@ $P -m pip install -q "comfyui-frontend-package==$FRONTEND_VERSION"
 step "4. Custom Nodes"
 mkdir -p "$C/custom_nodes"; cd "$C/custom_nodes" || exit 1
 REPOS=()
-want bilder && REPOS+=(ltdrdata/ComfyUI-Inspire-Pack)
+# Impact Pack + Subpack: ADetailer (FaceDetailer + Gesichts-/Hand-Erkennung)
+want bilder && REPOS+=(ltdrdata/ComfyUI-Inspire-Pack ltdrdata/ComfyUI-Impact-Pack ltdrdata/ComfyUI-Impact-Subpack)
 want video && REPOS+=(rgthree/rgthree-comfy kijai/ComfyUI-KJNodes city96/ComfyUI-GGUF
   darksidewalker/ComfyUI-DaSiWa-Nodes Kosinkadink/ComfyUI-VideoHelperSuite
   pixaroma/ComfyUI-Pixaroma huchukato/ComfyUI-PerfectVideoResolution huchukato/ComfyUI-QwenVL-Mod)
@@ -208,6 +209,14 @@ if want bilder; then
   civ "382152?fileId=306661" "$M/loras" expressiveH.safetensors
   civ "398847?fileId=321669" "$M/loras" gothic_neon.safetensors
   civ "244808?fileId=189513" "$M/loras" disney_princesses.safetensors
+
+  step "6d. Bilder: ADetailer-Erkennung (Gesicht, Hände)"
+  dl "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt" "$M/ultralytics/bbox" face_yolov8m.pt
+  dl "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" "$M/ultralytics/bbox" hand_yolov8s.pt
+  # Impact Subpack lädt ältere YOLO-Dateien nur, wenn sie freigegeben sind (PyTorch „weights_only“)
+  WL="$C/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt"
+  mkdir -p "$(dirname "$WL")"
+  for f in face_yolov8m.pt hand_yolov8s.pt; do grep -qx "$f" "$WL" 2>/dev/null || echo "$f" >> "$WL"; done
 fi
 
 if want video; then
@@ -305,6 +314,9 @@ step "CHECKS"
 has() { curl -s "localhost:$PORT/object_info/$1" | grep -q "\"$2\""; }
 if want bilder; then
   has "LoadPromptsFromFile%20%2F%2FInspire" "LoadPromptsFromFile //Inspire" && echo "OK  Inspire-Nodes" || FAIL+=("Inspire-Nodes")
+  has FaceDetailer FaceDetailer && echo "OK  ADetailer (Impact Pack)" || FAIL+=("Impact Pack (ADetailer)")
+  if has UltralyticsDetectorProvider face_yolov8m.pt; then echo "OK  ADetailer-Erkennung (Impact Subpack)"
+  else FAIL+=("Impact Subpack / face_yolov8m.pt (ADetailer)"); fi
   if has ModelSamplingAuraFlow ModelSamplingAuraFlow; then echo "OK  ModelSamplingAuraFlow (Anima Shift)"
   else echo "--  ModelSamplingAuraFlow fehlt (App nutzt dann ModelSamplingSD3)"; fi
   echo "-- Checkpoints:"; ls -lh "$M"/checkpoints/*.safetensors 2>/dev/null | awk '{print "   "$5"\t"$9}'

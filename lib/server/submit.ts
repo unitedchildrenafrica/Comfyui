@@ -5,7 +5,8 @@ import { buildWorkflow as buildH3, h3PromptText } from "../builders/h3";
 import { buildWorkflow as buildWai } from "../builders/wai";
 import { parseVideoBatch, settingsForItem } from "../h3batch";
 import type { H3Settings, ImageSettings, JobRecord, PromptItem } from "../types";
-import { ComfyPromptError, nodeExists, queuePrompt } from "./comfy";
+import { type DetailerOptions, type InputSpec, adetailerWanted } from "../builders/detailer";
+import { ComfyPromptError, comboValues, getNodeInfo, nodeExists, queuePrompt } from "./comfy";
 import { getClientId, registerPromptNodes } from "./events";
 import { ensureRefsOnPod } from "./refs";
 import { getAppSettings, saveBatch, saveJob } from "./store";
@@ -57,13 +58,15 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
         : null;
   }
 
+  const detailer = adetailerWanted(settings) ? await detailerOptions(settings) : undefined;
+
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };
 
   for (const [index, prompt] of items.entries()) {
     const seed = settings.seed ?? randomSeed();
     const input = { settings, prompt, seed };
-    const wf = settings.generator === "anima" ? buildAnima(input, { shiftNode }) : buildWai(input);
+    const wf = settings.generator === "anima" ? buildAnima(input, { shiftNode, detailer }) : buildWai(input, { detailer });
     try {
       const promptId = await queuePrompt(wf, clientId);
       registerPromptNodes(promptId, wf);
@@ -172,4 +175,16 @@ export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResu
     await saveBatch({ id: batchId, generator: "h3", promptIds: result.promptIds, total: items.length, createdAt: Date.now() });
   }
   return result;
+}
+
+/** ADetailer: Eingänge und Erkennungsmodelle vom Pod holen – mit klarer Meldung, wenn etwas fehlt. */
+async function detailerOptions(s: ImageSettings): Promise<DetailerOptions> {
+  const [face, provider] = await Promise.all([getNodeInfo("FaceDetailer"), getNodeInfo("UltralyticsDetectorProvider")]);
+  if (!face || !provider) throw new Error("ADetailer: Impact Pack bzw. Impact Subpack ist auf dem Pod nicht installiert (Setup „bilder“ oder „alles“ neu laufen lassen)");
+  const detectors = comboValues(provider, "model_name");
+  const faceModel = detectors.find((d) => /face/i.test(d)) ?? null;
+  const handModel = detectors.find((d) => /hand/i.test(d)) ?? null;
+  if (s.adetailer && !faceModel) throw new Error("ADetailer: Gesichts-Erkennung (face_yolov8m.pt) fehlt auf dem Pod");
+  if (s.adetailerHands && !handModel) throw new Error("ADetailer: Hand-Erkennung (hand_yolov8s.pt) fehlt auf dem Pod");
+  return { spec: (face.input?.required ?? null) as InputSpec | null, faceModel, handModel };
 }

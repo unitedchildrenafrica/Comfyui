@@ -52,7 +52,7 @@ Das ist `GH_TOKEN`.
 
 | Modus | Inhalt |
 |---|---|
-| `bilder` | Inspire Pack, WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Remacri, Bild-LoRAs |
+| `bilder` | Inspire Pack, Impact Pack + Subpack (ADetailer), WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Remacri, Bild-LoRAs |
 | `video` | MiniMax H3 Singularity: ComfyUI-Update, Custom Nodes (DaSiWa, KJNodes, VHS …), DiT, Text-Encoder, VAEs, TAE, RIFE, H3-LoRAs, x264-Patch |
 | `alles` | beides |
 

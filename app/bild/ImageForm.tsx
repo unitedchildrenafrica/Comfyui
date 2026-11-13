@@ -354,16 +354,42 @@ export function ImageForm() {
             )}
           </>
         )}
-        <Toggle
-          checked={false}
-          onChange={() => {}}
-          label="ADetailer"
-          disabled
-          hint={o && !o.available.faceDetailer ? "Impact Pack (FaceDetailer) nicht installiert." : "Kommt in Phase 2."}
-        />
         <Field label="Ausgabeordner">
           <input className="input" value={s.folder} placeholder={appDefaults?.folders[generator] ?? generator} onChange={(e) => set({ folder: e.target.value })} />
         </Field>
+      </Section>
+
+      <Section
+        title="ADetailer (Gesichter & Hände)"
+        right={[s.adetailer && "Gesicht", s.adetailerHands && "Hände"].filter(Boolean).join(" + ") || "aus"}
+      >
+        {o && !o.available.faceDetailer && (
+          <WarnBox>Auf diesem Pod fehlt das Impact Pack (bzw. Subpack). Setup „bilder“ oder „alles“ einmal neu laufen lassen.</WarnBox>
+        )}
+        <Toggle
+          checked={!!s.adetailer}
+          onChange={(v) => set({ adetailer: v })}
+          label="Gesichter verbessern"
+          disabled={!o?.available.faceDetailer || !o.detectors.some((d) => /face/i.test(d))}
+          hint="Findet Gesichter im fertigen Bild und rechnet sie in hoher Auflösung neu. Ein paar Sekunden extra pro Bild."
+        />
+        {s.adetailer && (
+          <Field label="Stärke Gesicht" hint="0.3 = nur glätten, 0.5 = deutlich neu zeichnen">
+            <Slider value={s.adetailerDenoise ?? 0.4} min={0.1} max={0.8} step={0.05} onChange={(v) => set({ adetailerDenoise: v })} />
+          </Field>
+        )}
+        <Toggle
+          checked={!!s.adetailerHands}
+          onChange={(v) => set({ adetailerHands: v })}
+          label="Hände verbessern"
+          disabled={!o?.available.faceDetailer || !o.detectors.some((d) => /hand/i.test(d))}
+          hint="Repariert oft verknotete oder überzählige Finger. Eine falsch liegende Hand kann er nicht neu erfinden."
+        />
+        {s.adetailerHands && (
+          <Field label="Stärke Hände" hint="Hände brauchen meist etwas mehr als Gesichter (0.45–0.55)">
+            <Slider value={s.adetailerHandDenoise ?? 0.45} min={0.1} max={0.8} step={0.05} onChange={(v) => set({ adetailerHandDenoise: v })} />
+          </Field>
+        )}
       </Section>
 
       <Section title="Hochskalieren" right={s.upscale.enabled ? `${s.upscale.factor}x` : "aus"}>

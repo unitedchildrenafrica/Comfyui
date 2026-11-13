@@ -20,6 +20,13 @@ const NODES = {
   KSamplerSelect: { sampler_name: combo(["euler", "res_multistep"]) },
   BasicScheduler: { scheduler: combo(["normal", "simple", "beta"]) },
   ModelSamplingAuraFlow: {},
+  // ADetailer (Impact Pack / Subpack) – mit MOCK_NO_IMPACT=1 weglassen
+  ...(process.env.MOCK_NO_IMPACT
+    ? {}
+    : {
+        FaceDetailer: { sampler_name: combo(["euler", "euler_ancestral", "dpmpp_2m"]), sam_detection_hint: combo(["center-1", "horizontal-2"]) },
+        UltralyticsDetectorProvider: { model_name: combo(["bbox/face_yolov8m.pt", "bbox/hand_yolov8s.pt"]) },
+      }),
   MiniMaxH3Director: { mode: combo(["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"]) },
   ...Object.fromEntries(
     ["MiniMaxH3DirectorGuide", "DaSiWa_EnhancedVideoCombine", "DaSiWa_LTX2LoraLoader", "DaSiWa_SeedControl", "DaSiWaH3ContinuityAppend", "DaSiWaH3ContinuityPublish", "FrameInterpolationModelLoader", "ModelPreviewOverrideKJ"].map((n) => [n, {}]),

@@ -1,9 +1,10 @@
 import template from "@/workflows/workflow_WAI_TensorHub.json";
 import { type ApiWorkflow, type Ref, assertValid, clone, node } from "./common";
+import { type DetailerOptions, applyDetailers } from "./detailer";
 import { type ImageJobInput, applyCommon, applyUpscale, insertLoraChain, rewireVae } from "./hires";
 
 /** WAI / Pony (SDXL/Illustrious-Checkpoint). */
-export function buildWorkflow(input: ImageJobInput): ApiWorkflow {
+export function buildWorkflow(input: ImageJobInput, opts: { detailer?: DetailerOptions } = {}): ApiWorkflow {
   const s = input.settings;
   const wf = clone(template) as unknown as ApiWorkflow;
   applyCommon(wf, input, s.generator === "pony" ? "pony" : "wai");
@@ -24,6 +25,7 @@ export function buildWorkflow(input: ImageJobInput): ApiWorkflow {
     vae = ["800", 0];
   }
   rewireVae(wf, vae);
+  applyDetailers(wf, s, input.seed, opts.detailer);
 
   return assertValid(wf);
 }

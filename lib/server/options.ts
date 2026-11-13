@@ -31,6 +31,8 @@ export interface Options {
     interpolationAvailable: boolean;
     livePreviewAvailable: boolean;
   };
+  /** Erkennungsmodelle für den ADetailer, z. B. „bbox/face_yolov8m.pt“ */
+  detectors: string[];
   available: {
     faceDetailer: boolean;
     shiftNode: "ModelSamplingAuraFlow" | "ModelSamplingSD3" | null;
@@ -48,6 +50,7 @@ export async function getOptions(): Promise<Options> {
     "UNETLoader",
     "CLIPLoader",
     "FaceDetailer",
+    "UltralyticsDetectorProvider",
     "ModelSamplingAuraFlow",
     "ModelSamplingSD3",
     "KSamplerSelect",
@@ -79,8 +82,10 @@ export async function getOptions(): Promise<Options> {
       interpolationAvailable: !!info.FrameInterpolationModelLoader,
       livePreviewAvailable: !!info.ModelPreviewOverrideKJ,
     },
+    detectors: comboValues(info.UltralyticsDetectorProvider, "model_name"),
     available: {
-      faceDetailer: !!info.FaceDetailer,
+      // braucht Impact Pack (FaceDetailer) und Impact Subpack (Erkennung)
+      faceDetailer: !!info.FaceDetailer && !!info.UltralyticsDetectorProvider,
       shiftNode: info.ModelSamplingAuraFlow ? "ModelSamplingAuraFlow" : info.ModelSamplingSD3 ? "ModelSamplingSD3" : null,
     },
   };

@@ -1,5 +1,6 @@
 import template from "@/workflows/workflow_ANIMA_TensorHub.json";
 import { type ApiWorkflow, assertValid, clone, node } from "./common";
+import { type DetailerOptions, applyDetailers } from "./detailer";
 import { type ImageJobInput, applyCommon, applyUpscale, insertLoraChain } from "./hires";
 
 export type ShiftNodeClass = "ModelSamplingAuraFlow" | "ModelSamplingSD3";
@@ -12,6 +13,7 @@ export interface AnimaOptions {
    * Bilder liefert, und das Ergebnis hier notieren.
    */
   shiftNode?: ShiftNodeClass | null;
+  detailer?: DetailerOptions;
 }
 
 /** Anima (UNet + Qwen3-Text-Encoder + Qwen-VAE). */
@@ -37,5 +39,6 @@ export function buildWorkflow(input: ImageJobInput, opts: AnimaOptions = {}): Ap
   node(wf, "13").inputs.model = model;
 
   applyUpscale(wf, s);
+  applyDetailers(wf, s, input.seed, opts.detailer);
   return assertValid(wf);
 }

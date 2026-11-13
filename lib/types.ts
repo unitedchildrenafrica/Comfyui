@@ -41,7 +41,13 @@ export interface ImageSettings {
   seed: number | null;
   clipSkip: number;
   upscale: UpscaleSettings;
+  /** ADetailer: Gesichter neu rechnen (Impact Pack FaceDetailer) */
   adetailer: boolean;
+  /** ADetailer: Hände neu rechnen */
+  adetailerHands?: boolean;
+  /** Stärke (denoise) für Gesichter bzw. Hände */
+  adetailerDenoise?: number;
+  adetailerHandDenoise?: number;
 
   folder: string;
   promptMode: "single" | "batch";
