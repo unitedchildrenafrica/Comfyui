@@ -58,13 +58,30 @@ export async function getBatch(id: string): Promise<BatchRecord | null> {
 
 type Presets = Record<string, ImageSettings>;
 
+/** Eingebaute Presets, die es schon vor der Liste „schon angeboten“ gab */
+const ORIGINAL_BUILTINS = ["WAI v10", "WAI v17", "Nova 3DCG", "Pony", "Aniverse Pony"];
+
 export async function getPresets(): Promise<Presets> {
   const file = config.dataPath("presets.json");
+  const seenFile = config.dataPath("presets-builtins-seen.json");
   const existing = await readJson<Presets | null>(file, null);
-  if (existing) return existing;
-  const initial = builtinPresets();
-  await writeJson(file, initial).catch(() => {});
-  return initial;
+  if (!existing) {
+    const initial = builtinPresets();
+    await writeJson(file, initial).catch(() => {});
+    await writeJson(seenFile, Object.keys(initial)).catch(() => {});
+    return initial;
+  }
+  // Neue eingebaute Presets einmalig ergänzen – selbst gelöschte kommen nicht zurück
+  const seen = new Set(await readJson<string[]>(seenFile, ORIGINAL_BUILTINS));
+  const added = Object.entries(builtinPresets()).filter(([name]) => !seen.has(name));
+  if (!added.length) return existing;
+  for (const [name, settings] of added) {
+    if (!existing[name]) existing[name] = settings;
+    seen.add(name);
+  }
+  await writeJson(file, existing).catch(() => {});
+  await writeJson(seenFile, [...seen]).catch(() => {});
+  return existing;
 }
 
 export async function savePreset(name: string, settings: ImageSettings) {

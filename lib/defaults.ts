@@ -105,5 +105,10 @@ export function builtinPresets(): Record<string, ImageSettings> {
     "Nova 3DCG": { ...defaultImageSettings("wai"), checkpoint: "nova3DCGXL_ilV90.safetensors" },
     Pony: defaultImageSettings("pony"),
     "Aniverse Pony": { ...defaultImageSettings("pony"), checkpoint: "aniversePonyXL_v40.safetensors" },
+    // Laut Modellseite: CFG 1 und 8–12 Schritte. CFG 1 = ein Modell-Durchlauf pro Schritt statt zwei
+    "Anima Turbo": (() => {
+      const a = defaultImageSettings("anima");
+      return { ...a, unet: "anima_turboV10.safetensors", steps: 10, cfg: 1, upscale: { ...a.upscale, steps: 6 } };
+    })(),
   };
 }

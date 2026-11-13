@@ -64,3 +64,18 @@ describe("Favoriten überleben das Löschen", () => {
     expect(await favoriteFileExists("video/2026-11-12", "Clip_1_00001.mp4")).toBe(true);
   });
 });
+
+describe("Presets", () => {
+  it("neue eingebaute Presets kommen einmal dazu, gelöschte nicht zurück", async () => {
+    const { writeFileSync } = await import("node:fs");
+    // Stand einer älteren Installation: nur die ursprünglichen Presets
+    writeFileSync(path.join(root, "data", "presets.json"), JSON.stringify({ "WAI v10": {}, Pony: {} }));
+    const { getPresets, deletePreset } = await import("@/lib/server/store");
+    const p = await getPresets();
+    expect(p["Anima Turbo"]?.cfg).toBe(1);
+    expect(p["Anima Turbo"]?.unet).toBe("anima_turboV10.safetensors");
+    expect(p["WAI v17"]).toBeUndefined(); // vom Nutzer gelöscht → bleibt weg
+    await deletePreset("Anima Turbo");
+    expect((await getPresets())["Anima Turbo"]).toBeUndefined();
+  });
+});
