@@ -13,7 +13,7 @@ import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
 import { H3_RESOLUTIONS, defaultH3Settings } from "@/lib/defaults";
 import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, nextClipName, parseH3Prompt, safeClipName, splitClipName } from "@/lib/h3prompt";
 import { parseVideoBatch } from "@/lib/h3batch";
-import { audioRefWarnings } from "@/lib/h3refs";
+import { refWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
 
@@ -392,8 +392,8 @@ export function VideoForm() {
         </Field>
       </Section>
 
-      {s.mode === "REF2VA" && audioRefWarnings(s.refs).length > 0 && (
-        <WarnBox>Audio-Referenz prüfen (sonst bricht der Job ab): {audioRefWarnings(s.refs).join(" ")}</WarnBox>
+      {s.mode === "REF2VA" && refWarnings(s.refs).length > 0 && (
+        <WarnBox>Referenzen prüfen (sonst bricht der Job ab): {refWarnings(s.refs).join(" ")}</WarnBox>
       )}
       {submitError && (
         <ErrorBox focus>

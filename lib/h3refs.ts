@@ -1,10 +1,25 @@
-// Grenzen für REF2VA-Audio laut ComfyUI-DaSiWa-Nodes (validate_reference_limits):
-// jede Referenz 2–15 s, alle zusammen höchstens 15 s, Audio nur zusammen mit einem Bild.
+// Referenzen für MiniMax H3 (REF2VA) – Regeln wie in ComfyUI-DaSiWa-Nodes
+// (nodes_minimax_h3_director.py, helper validate_reference_limits):
+//   höchstens 9 Bilder, 3 Videos, 3 Audios, zusammen 12 Dateien
+//   Videos (Bild) zusammen höchstens 15 s, Audio zusammen höchstens 15 s
+//   Audio nur zusammen mit einem Bild oder Video (Bild)
+// Ein Video kann als Bild, nur als Ton oder als Bild + Ton dienen. Nur-Ton-Videos werden zu
+// <Audio n> – und zwar VOR den normalen Audio-Dateien (der Director verarbeitet Videos zuerst).
 import type { H3Ref } from "./types";
 
 export const REF_MIN_SECONDS = 2;
 export const REF_MAX_SECONDS = 15;
 export const REF_TOTAL_SECONDS = 15;
+export const REF_MAX_VIDEOS = 3;
+export const REF_MAX_AUDIOS = 3;
+export const REF_MAX_FILES = 12;
+
+export type VideoMode = NonNullable<H3Ref["mediaMode"]>;
+export const videoMode = (r: H3Ref): VideoMode => r.mediaMode ?? "video";
+/** Video liefert Bild an das Modell */
+export const videoHasPicture = (r: H3Ref) => r.kind === "video" && videoMode(r) !== "audio";
+/** Referenz liefert Ton (Audio-Datei oder Video im Modus Ton / Bild + Ton) */
+export const refHasSound = (r: H3Ref) => r.kind === "audio" || (r.kind === "video" && videoMode(r) !== "video");
 
 /** Tatsächlich genutzte Länge nach Start/Ende; null, wenn die Dateilänge unbekannt ist. */
 export function usedSeconds(r: Pick<H3Ref, "duration" | "trimStart" | "trimEnd">): number | null {
@@ -14,25 +29,46 @@ export function usedSeconds(r: Pick<H3Ref, "duration" | "trimStart" | "trimEnd">
   return Math.max(0, Math.min(end, r.duration ?? end) - start);
 }
 
-export function audioRefWarnings(refs: H3Ref[]): string[] {
+/** Prompt-Tag(s) einer Referenz, z. B. „<Picture 2>“, „<Video 1>“, „<Audio 1>“ */
+export function refTag(refs: H3Ref[], r: H3Ref): string {
+  if (r.kind === "image") return `<Picture ${refs.filter((x) => x.kind === "image").indexOf(r) + 1}>`;
+  const videos = refs.filter((x) => x.kind === "video");
+  if (r.kind === "video" && videoMode(r) !== "audio") return `<Video ${videos.filter(videoHasPicture).indexOf(r) + 1}>`;
+  // Nur-Ton-Videos zuerst, dann die Audio-Dateien
+  const audioOrder = [...videos.filter((x) => videoMode(x) === "audio"), ...refs.filter((x) => x.kind === "audio")];
+  return `<Audio ${audioOrder.indexOf(r) + 1}>`;
+}
+
+export function refWarnings(refs: H3Ref[]): string[] {
+  const images = refs.filter((r) => r.kind === "image");
+  const videos = refs.filter((r) => r.kind === "video");
   const audios = refs.filter((r) => r.kind === "audio");
-  if (!audios.length) return [];
   const warnings: string[] = [];
-  if (!refs.some((r) => r.kind === "image")) warnings.push("Audio-Referenzen brauchen mindestens ein Referenzbild.");
-  let total = 0;
-  audios.forEach((r, i) => {
-    const tag = `<Audio ${i + 1}>`;
-    if (r.trimEnd !== undefined && r.trimEnd <= (r.trimStart ?? 0)) {
+  if (videos.length > REF_MAX_VIDEOS) warnings.push(`Höchstens ${REF_MAX_VIDEOS} Video-Referenzen.`);
+  const sounds = refs.filter(refHasSound);
+  if (sounds.length > REF_MAX_AUDIOS) warnings.push(`Höchstens ${REF_MAX_AUDIOS} Tonspuren (Audios + Videos mit Ton).`);
+  if (images.length + videos.length + audios.length > REF_MAX_FILES) warnings.push(`Höchstens ${REF_MAX_FILES} Referenzen insgesamt.`);
+  if (sounds.length && !images.length && !videos.some(videoHasPicture)) warnings.push("Ton-Referenzen brauchen mindestens ein Referenzbild oder ein Video (Bild).");
+
+  const trimProblem = (r: H3Ref) => r.trimEnd !== undefined && r.trimEnd <= (r.trimStart ?? 0);
+  let soundTotal = 0;
+  let videoTotal = 0;
+  for (const r of refs) {
+    if (r.kind === "image") continue;
+    const tag = refTag(refs, r);
+    if (trimProblem(r)) {
       warnings.push(`${tag}: Ende muss nach dem Start liegen.`);
-      return;
+      continue;
     }
     const used = usedSeconds(r);
-    if (used === null) return;
-    total += used;
-    if (used < REF_MIN_SECONDS) warnings.push(`${tag}: nur ${used.toFixed(1)} s – mindestens ${REF_MIN_SECONDS} s nötig.`);
+    if (used === null) continue;
+    if (videoHasPicture(r)) videoTotal += used;
+    if (refHasSound(r)) soundTotal += used;
+    if (r.kind === "audio" && used < REF_MIN_SECONDS) warnings.push(`${tag}: nur ${used.toFixed(1)} s – mindestens ${REF_MIN_SECONDS} s nötig.`);
     if (used > REF_MAX_SECONDS) warnings.push(`${tag}: ${used.toFixed(1)} s – höchstens ${REF_MAX_SECONDS} s. Mit Start/Ende kürzen.`);
-  });
-  if (total > REF_TOTAL_SECONDS && audios.length > 1)
-    warnings.push(`Alle Audios zusammen ${total.toFixed(1)} s – höchstens ${REF_TOTAL_SECONDS} s.`);
+  }
+  if (videoTotal > REF_TOTAL_SECONDS && videos.filter(videoHasPicture).length > 1)
+    warnings.push(`Alle Videos zusammen ${videoTotal.toFixed(1)} s – höchstens ${REF_TOTAL_SECONDS} s.`);
+  if (soundTotal > REF_TOTAL_SECONDS && sounds.length > 1) warnings.push(`Aller Ton zusammen ${soundTotal.toFixed(1)} s – höchstens ${REF_TOTAL_SECONDS} s.`);
   return warnings;
 }

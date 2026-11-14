@@ -11,6 +11,7 @@ export interface H3JobInput {
 export const H3_MAX_LORAS = 10;
 export const H3_MAX_IMAGES = 9;
 export const H3_MAX_AUDIO = 3;
+export const H3_MAX_VIDEOS = 3;
 
 export function h3PromptText(s: H3Settings): string {
   return s.promptInput === "blocks" && s.mode === "REF2VA" ? buildH3Prompt(s.blocks) : s.fullPrompt.trim();
@@ -24,9 +25,11 @@ export function h3PromptText(s: H3Settings): string {
  * In FL2VA ist slot 0 das erste und slot 1 das letzte Bild, in I2VA zählt nur slot 0.
  */
 export function timelineItems(s: H3Settings) {
-  const counters = { image: 0, audio: 0 };
+  const counters = { image: 0, audio: 0, video: 0 };
   return s.refs
     .filter((r) => r.filename)
+    // Videos und Audio nutzt nur REF2VA; die anderen Modi nehmen ausschließlich Bilder
+    .filter((r) => s.mode === "REF2VA" || r.kind === "image")
     .map((r, order) => {
       const item: Record<string, unknown> = {
         id: `pf_${r.kind}_${order}`,
@@ -36,10 +39,12 @@ export function timelineItems(s: H3Settings) {
         order,
         enabled: true,
       };
-      if (r.kind === "audio") {
+      if (r.kind !== "image") {
         if (r.trimStart) item.trim_start = r.trimStart;
         if (r.trimEnd) item.trim_end = r.trimEnd;
       }
+      // Video: als Bild, nur als Ton oder beides (DaSiWa „media_mode“)
+      if (r.kind === "video") item.media_mode = r.mediaMode ?? "video";
       return item;
     });
 }

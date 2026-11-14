@@ -75,13 +75,15 @@ export type H3BlockKey = (typeof H3_BLOCK_KEYS)[number];
 export type H3Blocks = Record<H3BlockKey, string>;
 
 export interface H3Ref {
-  kind: "image" | "audio";
+  kind: "image" | "audio" | "video";
   /** Dateiname im ComfyUI-input-Ordner (Rückgabe von /upload/image) */
   filename: string;
   trimStart?: number;
   trimEnd?: number;
   /** Länge der Datei in Sekunden (nur für die Anzeige/Prüfung in der App) */
   duration?: number;
+  /** nur Video: Bild, nur Ton oder Bild + Ton nutzen (DaSiWa „media_mode“) */
+  mediaMode?: "video" | "audio" | "video_audio";
 }
 
 export interface H3Settings {

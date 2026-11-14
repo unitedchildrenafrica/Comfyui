@@ -50,7 +50,7 @@ describe("H3 prompt", () => {
   });
 });
 
-import { audioRefWarnings, usedSeconds } from "@/lib/h3refs";
+import { refWarnings, usedSeconds } from "@/lib/h3refs";
 
 describe("Audio-Referenzen", () => {
   const img = { kind: "image" as const, filename: "a.png" };
@@ -61,11 +61,46 @@ describe("Audio-Referenzen", () => {
     expect(usedSeconds({})).toBeNull();
   });
   it("Warnungen", () => {
-    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 10 }])).toEqual([]);
-    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 30 }])[0]).toContain("höchstens 15");
-    expect(audioRefWarnings([img, { kind: "audio", filename: "x.mp3", duration: 1 }])[0]).toContain("mindestens 2");
-    expect(audioRefWarnings([{ kind: "audio", filename: "x.mp3", duration: 5 }])[0]).toContain("Referenzbild");
-    expect(audioRefWarnings([img, { kind: "audio", filename: "x", duration: 9 }, { kind: "audio", filename: "y", duration: 9 }]).at(-1)).toContain("zusammen");
-    expect(audioRefWarnings([img, { kind: "audio", filename: "x", duration: 20, trimStart: 5, trimEnd: 3 }])[0]).toContain("Ende");
+    expect(refWarnings([img, { kind: "audio", filename: "x.mp3", duration: 10 }])).toEqual([]);
+    expect(refWarnings([img, { kind: "audio", filename: "x.mp3", duration: 30 }])[0]).toContain("höchstens 15");
+    expect(refWarnings([img, { kind: "audio", filename: "x.mp3", duration: 1 }])[0]).toContain("mindestens 2");
+    expect(refWarnings([{ kind: "audio", filename: "x.mp3", duration: 5 }])[0]).toContain("Referenzbild");
+    expect(refWarnings([img, { kind: "audio", filename: "x", duration: 9 }, { kind: "audio", filename: "y", duration: 9 }]).at(-1)).toContain("zusammen");
+    expect(refWarnings([img, { kind: "audio", filename: "x", duration: 20, trimStart: 5, trimEnd: 3 }])[0]).toContain("Ende");
+  });
+});
+
+describe("Video-Referenzen (REF2VA)", () => {
+  it("Tags wie im Director: Videos zählen eigen, Nur-Ton-Videos vor Audio-Dateien", async () => {
+    const { refTag } = await import("@/lib/h3refs");
+    const img = { kind: "image" as const, filename: "a.png" };
+    const v1 = { kind: "video" as const, filename: "tanz.mp4", mediaMode: "video" as const, duration: 5 };
+    const v2 = { kind: "video" as const, filename: "stimme.mp4", mediaMode: "audio" as const, duration: 4 };
+    const v3 = { kind: "video" as const, filename: "szene.mov", mediaMode: "video_audio" as const, duration: 4 };
+    const au = { kind: "audio" as const, filename: "x.mp3", duration: 3 };
+    const refs = [img, au, v1, v2, v3];
+    expect([img, v1, v2, v3, au].map((r) => refTag(refs, r))).toEqual(["<Picture 1>", "<Video 1>", "<Audio 1>", "<Video 2>", "<Audio 2>"]);
+  });
+
+  it("prüft 15 s für Videos und Ton sowie maximal 3 Tonspuren", async () => {
+    const { refWarnings } = await import("@/lib/h3refs");
+    const v = (filename: string, duration: number, mediaMode: "video" | "audio" | "video_audio" = "video") => ({ kind: "video" as const, filename, duration, mediaMode });
+    expect(refWarnings([v("a", 8), v("b", 6)])).toEqual([]);
+    expect(refWarnings([v("a", 9), v("b", 9)]).at(-1)).toContain("Alle Videos zusammen");
+    expect(refWarnings([v("a", 3, "audio")])[0]).toContain("Referenzbild oder ein Video");
+    const many = [v("a", 3, "video_audio"), v("b", 3, "video_audio"), { kind: "audio" as const, filename: "c", duration: 3 }, { kind: "audio" as const, filename: "d", duration: 3 }];
+    expect(refWarnings(many)[0]).toContain("Tonspuren");
+  });
+
+  it("landen als Timeline-Einträge mit media_mode und Kürzung – nur in REF2VA", async () => {
+    const { timelineItems } = await import("@/lib/builders/h3");
+    const { defaultH3Settings } = await import("@/lib/defaults");
+    const refs = [
+      { kind: "image" as const, filename: "a.png" },
+      { kind: "video" as const, filename: "tanz.mp4", mediaMode: "video_audio" as const, trimStart: 1, trimEnd: 6 },
+    ];
+    const items = timelineItems({ ...defaultH3Settings(), mode: "REF2VA", refs });
+    expect(items[1]).toMatchObject({ type: "video", value: "tanz.mp4", slot: 0, media_mode: "video_audio", trim_start: 1, trim_end: 6 });
+    expect(timelineItems({ ...defaultH3Settings(), mode: "I2VA", refs }).map((i) => i.type)).toEqual(["image"]);
   });
 });

@@ -2,14 +2,21 @@
 
 import { useRef, useState } from "react";
 import { viewUrl } from "@/lib/client";
-import { H3_MAX_AUDIO, H3_MAX_IMAGES } from "@/lib/builders/h3";
-import { audioRefWarnings, usedSeconds } from "@/lib/h3refs";
+import { H3_MAX_AUDIO, H3_MAX_IMAGES, H3_MAX_VIDEOS } from "@/lib/builders/h3";
+import { type VideoMode, refHasSound, refTag, refWarnings, usedSeconds, videoMode } from "@/lib/h3refs";
 import type { H3Ref } from "@/lib/types";
 import { ErrorBox, NumberInput, WarnBox } from "@/components/ui";
 
 // Breiter Filter: Mit nur „audio/*“ blendet iOS/macOS manche Dateien aus (z. B. .m4a aus Sprachmemos).
 // Videos sind erlaubt – die Node nimmt dann deren Tonspur.
 const AUDIO_ACCEPT = "audio/*,video/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.mp4,.mov";
+const VIDEO_ACCEPT = "video/*,.mp4,.mov,.webm,.mkv";
+
+const VIDEO_MODES: { value: VideoMode; label: string }[] = [
+  { value: "video", label: "Bild" },
+  { value: "audio", label: "nur Ton" },
+  { value: "video_audio", label: "Bild + Ton" },
+];
 
 function inputFile(filename: string) {
   const i = filename.lastIndexOf("/");
@@ -45,19 +52,24 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
   const [error, setError] = useState<string | null>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
   const images = refs.filter((r) => r.kind === "image");
   const audios = refs.filter((r) => r.kind === "audio");
+  const videos = refs.filter((r) => r.kind === "video");
   const maxImages = imageLimit(mode);
   const audioAllowed = mode === "REF2VA";
+  // Tonspuren: Audio-Dateien + Videos mit Ton teilen sich das Limit
+  const soundSlots = H3_MAX_AUDIO - refs.filter(refHasSound).length;
 
   const add = async (files: FileList | null, kind: H3Ref["kind"]) => {
     if (!files?.length) return;
     setBusy(true);
     setError(null);
-    const free = kind === "image" ? maxImages - images.length : H3_MAX_AUDIO - audios.length;
+    const free = kind === "image" ? maxImages - images.length : kind === "video" ? H3_MAX_VIDEOS - videos.length : soundSlots;
     const added: H3Ref[] = [];
     try {
-      for (const f of Array.from(files).slice(0, Math.max(0, free))) added.push({ kind, filename: await upload(f) });
+      for (const f of Array.from(files).slice(0, Math.max(0, free)))
+        added.push({ kind, filename: await upload(f), ...(kind === "video" ? { mediaMode: "video" as const } : {}) });
     } catch (err) {
       setError((err as Error).message);
     }
@@ -66,14 +78,12 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
   };
 
   const remove = (r: H3Ref) => onChange(refs.filter((x) => x !== r));
+  // Reihenfolge innerhalb einer Art tauschen (sie bestimmt die Nummer im Prompt-Tag)
   const move = (r: H3Ref, dir: -1 | 1) => {
     const same = refs.filter((x) => x.kind === r.kind);
-    const i = same.indexOf(r);
-    const j = i + dir;
-    if (j < 0 || j >= same.length) return;
-    [same[i], same[j]] = [same[j], same[i]];
-    const other = refs.filter((x) => x.kind !== r.kind);
-    onChange(r.kind === "image" ? [...same, ...other] : [...other, ...same]);
+    const other = same[same.indexOf(r) + dir];
+    if (!other) return;
+    onChange(refs.map((x) => (x === r ? other : x === other ? r : x)));
   };
   const patch = (r: H3Ref, p: Partial<H3Ref>) => onChange(refs.map((x) => (x === r ? { ...x, ...p } : x)));
 
@@ -118,10 +128,75 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
 
       {audioAllowed && (
         <div className="space-y-2">
+          {videos.map((r) => (
+            <div key={r.filename} className="space-y-2 rounded-xl border border-line bg-bg p-3">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-medium">{refTag(refs, r)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">{r.filename}</span>
+                <button type="button" className="btn btn-ghost px-3" onClick={() => move(r, -1)} aria-label="nach oben">
+                  ▲
+                </button>
+                <button type="button" className="btn btn-ghost px-3" onClick={() => remove(r)} aria-label="entfernen">
+                  ✕
+                </button>
+              </div>
+              <video
+                src={viewUrl(inputFile(r.filename))}
+                controls
+                playsInline
+                preload="metadata"
+                className="max-h-56 w-full rounded-lg bg-black"
+                onLoadedMetadata={(e) => {
+                  const d = e.currentTarget.duration;
+                  if (Number.isFinite(d) && Math.abs(d - (r.duration ?? -1)) > 0.05) patch(r, { duration: d });
+                }}
+              />
+              <div className="flex gap-1.5">
+                {VIDEO_MODES.map((m) => {
+                  // „Ton“-Modi nur, wenn noch eine Tonspur frei ist (oder dieses Video schon Ton nutzt)
+                  const blocked = m.value !== "video" && !refHasSound(r) && soundSlots <= 0;
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      disabled={blocked}
+                      onClick={() => patch(r, { mediaMode: m.value })}
+                      className={`min-h-9 flex-1 rounded-lg border text-sm disabled:opacity-40 ${videoMode(r) === m.value ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted">
+                {r.duration !== undefined ? `Länge ${r.duration.toFixed(1)} s · genutzt ${usedSeconds(r)?.toFixed(1)} s` : "Länge wird ermittelt …"}
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted">
+                <label className="space-y-1">
+                  Start (s)
+                  <NumberInput value={r.trimStart ?? null} min={0} step={0.1} placeholder="0" onChange={(v) => patch(r, { trimStart: v ?? undefined })} />
+                </label>
+                <label className="space-y-1">
+                  Ende (s)
+                  <NumberInput value={r.trimEnd ?? null} min={0} step={0.1} placeholder="Ende" onChange={(v) => patch(r, { trimEnd: v ?? undefined })} />
+                </label>
+              </div>
+            </div>
+          ))}
+          {videos.length < H3_MAX_VIDEOS && (
+            <button type="button" className="btn btn-ghost w-full" disabled={busy} onClick={() => videoInput.current?.click()}>
+              + Video-Referenz ({videos.length}/{H3_MAX_VIDEOS})
+            </button>
+          )}
+          <input ref={videoInput} type="file" accept={VIDEO_ACCEPT} multiple hidden onChange={(e) => add(e.target.files, "video").then(() => (e.target.value = ""))} />
+          <p className="text-xs text-muted">
+            Video als Vorlage für Bewegung, Szene oder Person – im Prompt mit dem Tag ansprechen, z. B. „moves like in &lt;Video 1&gt;“. „nur Ton“ macht daraus eine
+            &lt;Audio&gt;-Referenz. Alle Videos zusammen max. 15 s – mit Start/Ende kürzen.
+          </p>
           {audios.map((r, i) => (
             <div key={r.filename + i} className="space-y-2 rounded-xl border border-line bg-bg p-3">
               <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="font-medium">&lt;Audio {i + 1}&gt;</span>
+                <span className="font-medium">{refTag(refs, r)}</span>
                 <span className="min-w-0 flex-1 truncate text-muted">{r.filename}</span>
                 <button type="button" className="btn btn-ghost px-3" onClick={() => move(r, -1)} aria-label="nach oben">
                   ▲
@@ -157,20 +232,20 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
               </div>
             </div>
           ))}
-          {audios.length < H3_MAX_AUDIO && (
+          {soundSlots > 0 && (
             <button type="button" className="btn btn-ghost w-full" disabled={busy} onClick={() => audioInput.current?.click()}>
-              + Audio-Referenz ({audios.length}/{H3_MAX_AUDIO})
+              + Audio-Referenz ({H3_MAX_AUDIO - soundSlots}/{H3_MAX_AUDIO} Tonspuren)
             </button>
           )}
           <input ref={audioInput} type="file" accept={AUDIO_ACCEPT} multiple hidden onChange={(e) => add(e.target.files, "audio").then(() => (e.target.value = ""))} />
           <p className="text-xs text-muted">
-            MP3, WAV, M4A, FLAC, OGG – oder ein Video (dann zählt nur der Ton). Jede Datei 2–15 s, alle zusammen max. 15 s, mindestens ein Bild nötig.
+            MP3, WAV, M4A, FLAC, OGG – oder ein Video (dann zählt nur der Ton). Jede Datei 2–15 s, aller Ton zusammen max. 15 s, mindestens ein Bild oder Video (Bild) nötig.
             Speaker-Zuordnung: &lt;Audio 1&gt; im Prompt der Stimme von (S1) zuordnen.
           </p>
-          {audioRefWarnings(refs).length > 0 && (
+          {refWarnings(refs).length > 0 && (
             <WarnBox>
               <ul className="space-y-1">
-                {audioRefWarnings(refs).map((w) => (
+                {refWarnings(refs).map((w) => (
                   <li key={w}>⚠ {w}</li>
                 ))}
               </ul>
@@ -178,7 +253,7 @@ export function RefEditor({ mode, refs, onChange }: { mode: string; refs: H3Ref[
           )}
         </div>
       )}
-      {busy && <p className="text-sm text-muted">Lade hoch …</p>}
+      {busy && <p className="text-sm text-muted">Lade hoch … (bei Videos kann das etwas dauern)</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
     </div>
   );
