@@ -54,3 +54,12 @@ jobs:
             --notes "Automatischer Build von ${GITHUB_SHA}" \
             --target "${GITHUB_SHA}" \
             --latest
+          # Sicherstellen, dass es kein Entwurf bleibt – Entwürfe sind für Pods und Server unsichtbar (404)
+          for i in 1 2 3 4 5; do
+            [ "$(gh release view latest --json isDraft -q .isDraft)" = "false" ] && break
+            echo "Release ist noch Entwurf – veröffentliche (Versuch $i)"
+            gh release edit latest --draft=false --latest || true
+            sleep 3
+          done
+          [ "$(gh release view latest --json isDraft -q .isDraft)" = "false" ] || { echo "Release blieb Entwurf"; exit 1; }
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/latest" -q '.assets[].name' | grep -qx pod-frontend.tar.gz
