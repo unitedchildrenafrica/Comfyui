@@ -39,6 +39,8 @@ interface State {
   index: Index | null;
   /** nach Neustart/Umstellung einmal einen größeren Teil des Verlaufs nachholen */
   catchUp?: boolean;
+  /** Ab diesem Zeitpunkt wieder weit zurückschauen, weil Dateien nicht kopiert werden konnten */
+  retryAt?: number;
   running: boolean;
   timer: ReturnType<typeof setInterval> | null;
   saveTimer: ReturnType<typeof setTimeout> | null;
@@ -47,6 +49,7 @@ interface State {
 const g = globalThis as unknown as { __podMirror?: State };
 const st = (g.__podMirror ??= { index: null, running: false, timer: null, saveTimer: null });
 
+const RETRY_MS = 3 * 60_000;
 const key = (f: { subfolder: string; filename: string }) => `${f.subfolder}/${f.filename}`;
 const indexFile = () => config.dataPath("outputs-index.json");
 
@@ -89,14 +92,30 @@ function saveSoon() {
   }, 500);
 }
 
-async function download(f: { filename: string; subfolder: string; type: string }, dest: string) {
-  const qs = new URLSearchParams({ filename: f.filename, subfolder: f.subfolder, type: f.type });
-  const res = await comfyFetch(`/view?${qs}`, { timeoutMs: 15 * 60_000 });
-  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-  await fs.mkdir(path.dirname(dest), { recursive: true });
-  const part = `${dest}.part`;
-  await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), createWriteStream(part));
-  await fs.rename(part, dest);
+// Laufende Downloads je Zieldatei: mirrorSoon (direkt nach dem Job) und mirrorPending (alle 20 s)
+// greifen oft gleichzeitig nach derselben Datei. Ohne Abgleich schrieben beide dieselbe .part-Datei,
+// der zweite rename lief ins Leere (ENOENT) und der Job galt als nicht gespiegelt.
+const inflight = new Map<string, Promise<void>>();
+
+function download(f: { filename: string; subfolder: string; type: string }, dest: string): Promise<void> {
+  const running = inflight.get(dest);
+  if (running) return running;
+  const job = (async () => {
+    const qs = new URLSearchParams({ filename: f.filename, subfolder: f.subfolder, type: f.type });
+    const res = await comfyFetch(`/view?${qs}`, { timeoutMs: 15 * 60_000 });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    const part = `${dest}.${process.pid}.${Date.now().toString(36)}.part`;
+    try {
+      await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), createWriteStream(part));
+      await fs.rename(part, dest);
+    } catch (err) {
+      await fs.rm(part, { force: true }).catch(() => {});
+      throw err;
+    }
+  })().finally(() => inflight.delete(dest));
+  inflight.set(dest, job);
+  return job;
 }
 
 /** Kopiert alle Ausgaben eines Jobs (falls noch nicht da) und trägt sie in den Index ein. */
@@ -125,6 +144,9 @@ export async function mirrorEntry(e: HistoryEntry): Promise<boolean> {
       console.warn(`[mirror] ${f.subfolder}/${f.filename}: ${(err as Error).message}`);
     }
   }
+  // Fehlgeschlagene Jobs rutschen bei großen Batches schnell aus den letzten 60 heraus – darum
+  // in ein paar Minuten noch einmal den ganzen Verlauf durchgehen
+  if (!ok) st.retryAt ??= Date.now() + RETRY_MS;
   if (ok && !idx.prompts.includes(e.promptId)) idx.prompts.push(e.promptId);
   saveSoon();
   return ok;
@@ -137,9 +159,12 @@ export async function mirrorPending() {
   try {
     const idx = await index();
     const done = new Set(idx.prompts);
-    // Beim ersten Durchlauf nach dem Start (oder nach der Umstellung) weit zurück, danach nur die letzten
-    const limit = st.catchUp === false ? 60 : 2000;
+    // Beim ersten Durchlauf nach dem Start (oder nach der Umstellung) und nach Fehlern weit zurück,
+    // sonst nur die letzten
+    const retry = st.retryAt !== undefined && Date.now() >= st.retryAt;
+    const limit = st.catchUp === false && !retry ? 60 : 2000;
     const entries = (await getHistory(limit)).filter((e) => e.status === "success" && e.files.length && !done.has(e.promptId));
+    if (retry) st.retryAt = undefined;
     for (const e of entries) await mirrorEntry(e);
     st.catchUp = false;
   } catch {
