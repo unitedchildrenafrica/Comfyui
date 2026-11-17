@@ -86,6 +86,18 @@ if [ "${1:-}" = patreon ]; then
   exit 0
 fi
 
+# bash setup-server.sh openai → OpenAI-API-Schlüssel (für den Knete-Stil) eintragen, App neu starten
+if [ "${1:-}" = openai ]; then
+  echo "Schlüssel von platform.openai.com → API keys (sk-…). Eingabe wird nicht angezeigt."
+  read -r -s -p "OpenAI API key: " v < /dev/tty; echo
+  v="$(printf '%s' "$v" | tr -d '[:space:]')"
+  [ -n "$v" ] || { echo "Kein Schlüssel – abgebrochen"; exit 1; }
+  put OPENAI_API_KEY "$v"
+  systemctl restart pod-frontend
+  log "OpenAI-Schlüssel eingetragen, App neu gestartet. Tab: Knete."
+  exit 0
+fi
+
 ask GH_TOKEN "GitHub-Token (github_pat_…)"
 ask APP_PASSWORD "Passwort für die App"
 ask CF_TUNNEL_TOKEN "Cloudflare-Tunnel-Token für comfy.comfyusel.uk (eyJ…)"
