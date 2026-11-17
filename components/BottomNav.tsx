@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/bild", label: "Bild", icon: "🖼️" },
   { href: "/video", label: "Video", icon: "🎬" },
+  // vorübergehend: Fotos per OpenAI im Knete-Stil (app/knete)
+  { href: "/knete", label: "Knete", icon: "🎨" },
   { href: "/queue", label: "Queue", icon: "⏳" },
   { href: "/galerie", label: "Galerie", icon: "🗂️" },
   { href: "/notizen", label: "Notizen", icon: "📝" },
