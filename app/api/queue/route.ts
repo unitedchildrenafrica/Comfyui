@@ -37,6 +37,7 @@ export async function GET() {
       // für die Wecker-Glocke: auch Videos aus der ComfyUI-Oberfläche erkennen
       kind: jobs[h.promptId]?.kind ?? (h.files.some((f) => f.kind === "video") ? "video" : "image"),
       status: h.status,
+      error: h.status === "error" ? (h.error ?? null) : null,
       durationMs: h.durationMs ?? getLiveState().durations[h.promptId] ?? null,
       timestamp: h.timestamp,
       batchId: jobs[h.promptId]?.batchId ?? null,

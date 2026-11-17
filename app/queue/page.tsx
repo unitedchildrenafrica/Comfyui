@@ -23,6 +23,7 @@ interface RecentItem {
   label: string;
   generator: string | null;
   status: string;
+  error?: string | null;
   durationMs: number | null;
 }
 
@@ -121,12 +122,15 @@ export default function QueuePage() {
           <h2 className="font-semibold">Zuletzt fertig</h2>
           <ul className="divide-y divide-line">
             {queue!.recent.map((r) => (
-              <li key={r.promptId} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <span className="min-w-0 truncate">
-                  {r.status === "error" ? "⚠ " : r.status === "interrupted" ? "⏹ " : "✓ "}
-                  {r.label} <span className="text-xs text-muted">{r.generator}</span>
-                </span>
-                <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{formatDuration(r.durationMs)}</span>
+              <li key={r.promptId} className="py-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    {r.status === "error" ? "⚠ " : r.status === "interrupted" ? "⏹ " : "✓ "}
+                    {r.label} <span className="text-xs text-muted">{r.generator}</span>
+                  </span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{formatDuration(r.durationMs)}</span>
+                </div>
+                {r.error && <p className="mt-1 break-words rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-200">{r.error}</p>}
               </li>
             ))}
           </ul>

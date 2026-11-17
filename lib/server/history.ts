@@ -68,7 +68,9 @@ export function parseHistory(raw: RawHistory): HistoryEntry[] {
               : "unknown",
       timestamp: typeof start === "number" ? start : 0,
       files,
-      error: errMsg ? String(errMsg.exception_message ?? "Fehler") : undefined,
+      error: errMsg
+        ? `${errMsg.node_type ? `${String(errMsg.node_type)} (Node ${String(errMsg.node_id ?? "?")}): ` : ""}${String(errMsg.exception_message ?? "Fehler").trim()}`
+        : undefined,
       durationMs: typeof start === "number" && typeof end === "number" && end >= start ? end - start : null,
     };
   });
