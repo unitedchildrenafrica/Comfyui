@@ -365,3 +365,34 @@ async function callOpenAI(s: Omit<KneteSettings, "size"> & { size: string }, pho
   if (!b64) throw new Error("OpenAI hat kein Bild zurückgegeben");
   return { image: Buffer.from(b64, "base64"), usage: body?.usage };
 }
+
+// --- Galerie -----------------------------------------------------------------------------
+
+export interface KneteGalleryRow {
+  file: { filename: string; subfolder: string; type: string; kind: "image" };
+  promptId: string;
+  timestamp: number;
+  durationMs: number | null;
+  label: string;
+}
+
+/** Fertige Knete-Bilder für die Galerie (laufen nicht über ComfyUI, stehen also nicht in /history). */
+export async function kneteGalleryRows(): Promise<KneteGalleryRow[]> {
+  const rows: KneteGalleryRow[] = [];
+  for (const job of await listJobs()) {
+    for (const it of job.items) {
+      if (it.status !== "done" || !it.output) continue;
+      // In der Galerie gelöschte Dateien nicht wieder anzeigen
+      const exists = await fs.access(path.join(outputFolder(job.folder), it.output)).then(() => true, () => false);
+      if (!exists) continue;
+      rows.push({
+        file: { filename: it.output, subfolder: `knete/${job.folder}`, type: "output", kind: "image" },
+        promptId: `knete_${job.id}_${it.i}`,
+        timestamp: it.updatedAt,
+        durationMs: it.ms ?? null,
+        label: `Knete: ${it.name}`,
+      });
+    }
+  }
+  return rows;
+}
