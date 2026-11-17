@@ -290,9 +290,11 @@ SAGE="\${2-$DEFAULT_SAGE}"
 case "\$PROFILE" in
   video) MEM="--disable-smart-memory --cache-none --reserve-vram 1.0" ;;
   *)     PROFILE=bild; MEM="--reserve-vram 1.0"
-         # Bilder: klassisch laden (Modell bleibt ganz in der Grafikkarte). Das dynamische Laden
-         # hing nach einem Abbruch beim nächsten Job fest; SDXL braucht es nicht.
-         grep -q -- "--disable-dynamic-vram" "$C/comfy/cli_args.py" 2>/dev/null && MEM="\$MEM --disable-dynamic-vram" ;;
+         # Reiner Bild-Pod: klassisch laden (Modell bleibt ganz in der Grafikkarte). Das dynamische
+         # Laden hing nach einem Abbruch beim nächsten Job fest; SDXL braucht es nicht.
+         # NICHT bei Pods mit Video: H3 passt nicht komplett ins VRAM und bricht ohne dynamisches
+         # Laden sofort mit „out of memory“ ab.
+         [ "$MODE" = bilder ] && grep -q -- "--disable-dynamic-vram" "$C/comfy/cli_args.py" 2>/dev/null && MEM="\$MEM --disable-dynamic-vram" ;;
 esac
 if [ "\$SAGE" = sage ]; then
   if $P -c "import sageattention" 2>/dev/null; then MEM="\$MEM --use-sage-attention"; PROFILE="\$PROFILE + SageAttention"
