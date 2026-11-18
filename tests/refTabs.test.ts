@@ -103,3 +103,17 @@ describe("Prüfungen", () => {
     expect(refLimitError(Array.from({ length: 4 }, (_, i) => ({ kind: "audio" as const, filename: `${i}` })))).toContain("3");
   });
 });
+
+describe("Ref-Tabs speichern", () => {
+  it("cleanTabs übernimmt nur bekannte Felder und lehnt Unsinn ab", async () => {
+    const { cleanTabs } = await import("@/lib/server/refTabs");
+    expect(cleanTabs([[{ kind: "video", filename: "v.mp4", mediaMode: "audio", trimStart: 1, evil: "x" }], []])).toEqual([
+      [{ kind: "video", filename: "v.mp4", mediaMode: "audio", trimStart: 1 }],
+      [],
+    ]);
+    expect(cleanTabs([[{ kind: "exe", filename: "x" }]])).toBeNull();
+    expect(cleanTabs([])).toBeNull();
+    expect(cleanTabs(Array.from({ length: 11 }, () => []))).toBeNull();
+    expect(cleanTabs("nope")).toBeNull();
+  });
+});

@@ -9,6 +9,7 @@ import { type DetailerOptions, type InputSpec, adetailerWanted } from "../builde
 import { ComfyPromptError, comboValues, getNodeInfo, nodeExists, queuePrompt } from "./comfy";
 import { getClientId, registerPromptNodes } from "./events";
 import { ensureRefsOnPod } from "./refs";
+import { refLimitError } from "../h3refs";
 import { getAppSettings, saveBatch, saveJob } from "./store";
 
 export class BatchParseError extends Error {
@@ -108,7 +109,9 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
   return result;
 }
 
-export async function submitVideoJob(settings: H3Settings) {
+export async function submitVideoJob(input: H3Settings) {
+  // Alle Tabs werden nur zum Abschicken mitgeschickt – im Job nur die tatsächlich benutzten Refs
+  const { refTabs: _t, ...settings } = input;
   await ensureRefsOnPod(settings.refs ?? []);
   const seed = settings.seed ?? randomSeed();
   const wf = buildH3({ settings, seed });
@@ -129,13 +132,22 @@ export async function submitVideoJob(settings: H3Settings) {
 
 /**
  * Video-Batch: jeder Prompt ein eigener Job, alle sofort in die ComfyUI-Queue. Läuft weiter,
- * auch wenn das Handy gesperrt ist. Alle Clips teilen Einstellungen und Referenzen.
+ * auch wenn das Handy gesperrt ist. Alle Clips teilen die Einstellungen; die Referenzen kommen aus
+ * dem Ref-Tab des Clips („Ref-Tab 3“ über „Clip 35“), sonst aus dem gewählten Tab.
  */
 export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResult> {
-  const { items, errors } = parseVideoBatch(settings.batchText ?? "", { mode: settings.mode, noDialogue: settings.noDialogue });
+  const { items, errors } = parseVideoBatch(settings.batchText ?? "", {
+    mode: settings.mode,
+    noDialogue: settings.noDialogue,
+    tabs: settings.refTabs,
+    defaultTab: settings.refTab,
+  });
   if (errors.length) throw new BatchParseError(errors);
   if (!items.length) throw new BatchParseError([{ block: 0, message: "Keine Prompts gefunden" }]);
-  await ensureRefsOnPod(settings.refs ?? []);
+  const limit = settings.refTabs ? null : refLimitError(settings.refs ?? []);
+  if (limit) throw new BatchParseError([{ block: 0, message: limit }]);
+  // Refs aller benutzten Tabs vorab auf den Pod – fehlt eine, startet gar nichts (statt nachts abzubrechen)
+  await ensureRefsOnPod(items.flatMap((it) => it.refs ?? settings.refs ?? []));
   const clientId = getClientId();
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };
