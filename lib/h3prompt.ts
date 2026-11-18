@@ -77,6 +77,16 @@ const plainLine = (line: string) => line.trim().replace(/^#+\s*/, "").replace(/^
 /** Ist die Zeile eine Clip-Zeile wie „Clip 35“ / „**Clip 35**“? */
 export const isClipLine = (line: string) => CLIP_LINE.test(plainLine(line));
 
+/** „Ref-Tab 3“, „Reftab 3“, „Ref 3“, „Ref Tab: 3“ */
+const REF_TAB_LINE = /^ref(?:[\s\-_]*tab)?\s*[:#]?\s*#?\s*(\d{1,2})$/i;
+
+/** Nummer aus einer Ref-Tab-Zeile (1-basiert) oder null */
+export function parseRefTabLine(line: string): number | null {
+  const m = plainLine(line).match(REF_TAB_LINE);
+  const n = m ? Number(m[1]) : 0;
+  return n >= 1 ? n : null;
+}
+
 /** Enthält der Text mindestens eine Block-Überschrift (summary:, detailed_description: …)? */
 export const hasBlockHeading = (text: string) => new RegExp(HEADING_RE.source, "im").test(text);
 

@@ -1,8 +1,9 @@
 // Video-Batch: viele H3-Prompts auf einmal, jeder wird ein eigener Job (wie beim Bild-Batch).
 
 import type { BatchError } from "./batch";
-import { buildH3Prompt, checkH3Prompt, hasBlockHeading, isClipLine, parseH3Prompt, splitClipName } from "./h3prompt";
-import type { H3Blocks, H3Settings } from "./types";
+import { buildH3Prompt, checkH3Prompt, hasBlockHeading, isClipLine, parseH3Prompt, parseRefTabLine, splitClipName } from "./h3prompt";
+import { refLimitError, tagWarnings } from "./h3refs";
+import type { H3Blocks, H3Ref, H3Settings } from "./types";
 
 export interface VideoBatchItem {
   /** Nummer des Abschnitts im Text (1-basiert) */
@@ -16,6 +17,10 @@ export interface VideoBatchItem {
   /** kurze Vorschau für die Liste */
   preview: string;
   warnings: string[];
+  /** Ref-Tab dieses Clips (1-basiert); null = ohne Tabs (altes Formular) */
+  refTab: number | null;
+  /** Referenzen aus diesem Tab; null = Formular-Referenzen */
+  refs: H3Ref[] | null;
 }
 
 export const VIDEO_BATCH_MAX = 300;
@@ -48,8 +53,11 @@ export function splitVideoBatch(raw: string): string[] {
     let cur: string[] = [];
     for (const line of chunk) {
       if (isClipLine(line) && cur.some((l) => l.trim())) {
-        out.push(cur.join("\n"));
-        cur = [];
+        // „Ref-Tab 3“ direkt über „Clip 35“ gehört zum neuen Clip
+        const last = cur.findLastIndex((l) => l.trim());
+        const carry = parseRefTabLine(cur[last]) !== null ? cur.splice(last) : [];
+        if (cur.some((l) => l.trim())) out.push(cur.join("\n"));
+        cur = carry;
       }
       cur.push(line);
     }
@@ -58,9 +66,24 @@ export function splitVideoBatch(raw: string): string[] {
   return out.filter((c) => c.trim());
 }
 
+/** Ref-Tab-Zeile oben im Abschnitt (vor oder nach der Clip-Zeile) abtrennen */
+function takeRefTabLine(text: string): { tab: number | null; text: string } {
+  const lines = text.split("\n");
+  const first = lines.findIndex((l) => l.trim());
+  const tab = first >= 0 ? parseRefTabLine(lines[first]) : null;
+  return tab === null ? { tab, text } : { tab, text: lines.slice(first + 1).join("\n") };
+}
+
 export function parseVideoBatch(
   raw: string,
-  opts: { mode: string; noDialogue: boolean },
+  opts: {
+    mode: string;
+    noDialogue: boolean;
+    /** alle Ref-Tabs; ohne = kein Wechsel pro Clip */
+    tabs?: H3Ref[][];
+    /** Tab für Clips ohne Ref-Tab-Zeile (1-basiert) */
+    defaultTab?: number;
+  },
 ): { items: VideoBatchItem[]; errors: BatchError[]; skipped: string[] } {
   const items: VideoBatchItem[] = [];
   const errors: BatchError[] = [];
@@ -68,7 +91,35 @@ export function parseVideoBatch(
   const isRef = opts.mode === "REF2VA";
   splitVideoBatch(raw).forEach((chunk, i) => {
     const block = i + 1;
-    const { name, text } = splitClipName(chunk);
+    // Reihenfolge egal: „Ref-Tab 3“ über oder unter „Clip 35“
+    const before = takeRefTabLine(chunk);
+    const clip = splitClipName(before.text);
+    const after = before.tab === null ? takeRefTabLine(clip.text) : { tab: null, text: clip.text };
+    const name = clip.name;
+    const text = after.text.trim();
+    const wanted = before.tab ?? after.tab;
+    let refTab: number | null = null;
+    let refs: H3Ref[] | null = null;
+    const refNotes: string[] = [];
+    if (opts.tabs) {
+      refTab = wanted ?? opts.defaultTab ?? 1;
+      const tabRefs = opts.tabs[refTab - 1];
+      if (!tabRefs) {
+        if (hasBlockHeading(text) || !isRef) errors.push({ block, message: `${name ? `„${name}“: ` : ""}Ref-Tab ${refTab} gibt es nicht (nur 1–${opts.tabs.length})` });
+        return;
+      }
+      refs = tabRefs;
+      const limit = refLimitError(tabRefs);
+      if (limit && isRef) {
+        errors.push({ block, message: `${name ? `„${name}“: ` : ""}Ref-Tab ${refTab}: ${limit}` });
+        return;
+      }
+      if (isRef && !tabRefs.length) refNotes.push(`Ref-Tab ${refTab} ist leer`);
+      const missingTags = tagWarnings(text, tabRefs);
+      if (missingTags.length) refNotes.push(`${missingTags.join(", ")} gibt es in Ref-Tab ${refTab} nicht`);
+    } else if (wanted !== null) {
+      refNotes.push(`„Ref-Tab ${wanted}“ ignoriert – keine Ref-Tabs geladen`);
+    }
     if (isRef) {
       if (!hasBlockHeading(text)) {
         // Einleitung/Schluss von Claude ohne Prompt → überspringen, aber anzeigen
@@ -87,7 +138,9 @@ export function parseVideoBatch(
         blocks,
         text: "",
         preview: (blocks.summary || blocks.detailed_description).replace(/\s+/g, " ").slice(0, 90),
-        warnings: checkH3Prompt(full, blocks.overall_soundscape, opts.noDialogue),
+        warnings: [...refNotes, ...checkH3Prompt(full, blocks.overall_soundscape, opts.noDialogue)],
+        refTab,
+        refs,
       });
     } else {
       if (!text.trim()) return;
@@ -95,9 +148,11 @@ export function parseVideoBatch(
         block,
         name,
         blocks: null,
-        text: text.trim(),
+        text,
         preview: text.replace(/\s+/g, " ").trim().slice(0, 90),
-        warnings: checkH3Prompt(text, text, opts.noDialogue),
+        warnings: [...refNotes, ...checkH3Prompt(text, text, opts.noDialogue)],
+        refTab,
+        refs,
       });
     }
   });
@@ -107,7 +162,8 @@ export function parseVideoBatch(
 
 /** Einstellungen für einen einzelnen Clip des Batches (so wird er auch gespeichert → „nochmal“ geht) */
 export function settingsForItem(s: H3Settings, item: VideoBatchItem): H3Settings {
-  const { batchText: _b, ...rest } = s;
+  const { batchText: _b, refTabs: _t, ...base } = s;
+  const rest = item.refs ? { ...base, refs: item.refs, refTab: item.refTab ?? base.refTab } : base;
   return item.blocks
     ? { ...rest, promptInput: "blocks", blocks: item.blocks, fullPrompt: "", clipName: item.name }
     : { ...rest, promptInput: "full", fullPrompt: item.text, clipName: item.name };

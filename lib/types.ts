@@ -114,6 +114,10 @@ export interface H3Settings {
   fullPrompt: string;
   noDialogue: boolean;
   refs: H3Ref[];
+  /** Ref-Tab, aus dem `refs` stammt (1-basiert) */
+  refTab?: number;
+  /** Nur beim Abschicken: alle Ref-Tabs, damit der Batch pro Clip wechseln kann (wird nicht gespeichert) */
+  refTabs?: H3Ref[][];
   /** Clip-Name für die Datei (z. B. „Clip 35“ → Clip_35_00001.mp4), leer = Datum/Uhrzeit */
   clipName?: string;
   /** Video-Batch: Prompts getrennt durch „---“ oder „Clip N“-Zeilen */

@@ -13,6 +13,10 @@ export const REF_TOTAL_SECONDS = 15;
 export const REF_MAX_VIDEOS = 3;
 export const REF_MAX_AUDIOS = 3;
 export const REF_MAX_FILES = 12;
+export const REF_MAX_IMAGES = 9;
+/** Ref-Tabs: Standard 5, mit „+“ bis 10 */
+export const REF_TABS_DEFAULT = 5;
+export const REF_TABS_MAX = 10;
 
 export type VideoMode = NonNullable<H3Ref["mediaMode"]>;
 export const videoMode = (r: H3Ref): VideoMode => r.mediaMode ?? "video";
@@ -71,4 +75,32 @@ export function refWarnings(refs: H3Ref[]): string[] {
     warnings.push(`Alle Videos zusammen ${videoTotal.toFixed(1)} s – höchstens ${REF_TOTAL_SECONDS} s.`);
   if (soundTotal > REF_TOTAL_SECONDS && sounds.length > 1) warnings.push(`Aller Ton zusammen ${soundTotal.toFixed(1)} s – höchstens ${REF_TOTAL_SECONDS} s.`);
   return warnings;
+}
+
+/** Harte Grenzen des Directors – darüber bricht der Job ab. null = alles in Ordnung. */
+export function refLimitError(refs: H3Ref[]): string | null {
+  const images = refs.filter((r) => r.kind === "image").length;
+  const videos = refs.filter((r) => r.kind === "video").length;
+  const sounds = refs.filter(refHasSound).length;
+  if (images > REF_MAX_IMAGES) return `Höchstens ${REF_MAX_IMAGES} Referenzbilder`;
+  if (videos > REF_MAX_VIDEOS) return `Höchstens ${REF_MAX_VIDEOS} Video-Referenzen`;
+  if (sounds > REF_MAX_AUDIOS) return `Höchstens ${REF_MAX_AUDIOS} Tonspuren (Audios + Videos mit Ton)`;
+  if (refs.length > REF_MAX_FILES) return `Höchstens ${REF_MAX_FILES} Referenzen insgesamt`;
+  return null;
+}
+
+/** Tags im Prompt („<Picture 3>“), die es in diesen Referenzen nicht gibt */
+export function tagWarnings(text: string, refs: H3Ref[]): string[] {
+  const count = {
+    picture: refs.filter((r) => r.kind === "image").length,
+    video: refs.filter(videoHasPicture).length,
+    audio: refs.filter((r) => r.kind === "audio" || (r.kind === "video" && videoMode(r) === "audio")).length,
+  };
+  const out = new Set<string>();
+  for (const m of text.matchAll(/<\s*(picture|video|audio)\s+(\d+)\s*>/gi)) {
+    const kind = m[1].toLowerCase() as keyof typeof count;
+    const n = Number(m[2]);
+    if (n > count[kind]) out.add(`<${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${n}>`);
+  }
+  return [...out];
 }
