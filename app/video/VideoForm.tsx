@@ -378,7 +378,14 @@ export function VideoForm() {
           <TabGroups
             tabs={tabs}
             group={refTabs.group}
+            extraCount={extra?.length ?? 0}
             onSaved={(name) => refTabs.setGroupName(name)}
+            onClearAll={() => {
+              refTabs.replaceAll(emptyTabs(), null);
+              refTabs.closeExtra();
+              set({ refTab: 1 });
+              setRefNote(null);
+            }}
             onLoad={(groupTabs, name) => {
               refTabs.replaceAll(groupTabs.length ? groupTabs : emptyTabs(), name);
               if (activeTab !== EXTRA_TAB) set({ refTab: 1 });

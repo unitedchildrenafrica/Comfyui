@@ -22,11 +22,17 @@ const when = (ms: number) => new Date(ms).toLocaleString("de-DE", { dateStyle: "
 export function TabGroups({
   tabs,
   group,
+  extraCount,
   onLoad,
   onSaved,
+  onClearAll,
 }: {
   tabs: H3Ref[][];
   group: string | null;
+  /** Anzahl Refs in Tab Extra (wird beim Leeren mit entfernt) */
+  extraCount: number;
+  /** alle aktuellen Tabs leeren (inkl. Tab Extra) – Gruppen bleiben */
+  onClearAll: () => void;
   /** Tabs ersetzen; name = null → leere Tabs ohne Gruppe */
   onLoad: (tabs: H3Ref[][], name: string | null) => void;
   onSaved: (name: string) => void;
@@ -82,6 +88,15 @@ export function TabGroups({
     setOpen(false);
   };
 
+  const clearAll = () => {
+    const total = refCount(tabs) + extraCount;
+    const warn = unsaved && hasRefs ? "\n\nAchtung: Die aktuellen Tabs sind nicht als Gruppe gespeichert – vorher „💾 Speichern“, wenn du sie behalten willst." : "";
+    if (!window.confirm(`Alle ${total} Referenzen aus Tab 1–${tabs.length}${extraCount ? " und Tab Extra" : ""} entfernen? Gespeicherte Gruppen bleiben erhalten.${warn}`)) return;
+    onClearAll();
+    setNote("Alle Tabs geleert – gespeicherte Gruppen sind unverändert.");
+    setOpen(false);
+  };
+
   const fresh = () => {
     if (!confirmReplace("leere Tabs")) return;
     onLoad([], null);
@@ -106,11 +121,19 @@ export function TabGroups({
           <span className="font-medium">{group ?? "nicht gespeichert"}</span>
           {group && unsaved && <span className="text-amber-200"> · geändert</span>}
         </p>
-        <button type="button" className="btn btn-ghost min-h-10 flex-1 px-3 text-sm" disabled={busy || !hasRefs} onClick={save}>
+        <button type="button" className="btn btn-ghost min-h-10 flex-1 whitespace-nowrap px-2 text-[13px]" disabled={busy || !hasRefs} onClick={save}>
           💾 Speichern
         </button>
-        <button type="button" className="btn btn-ghost min-h-10 flex-1 px-3 text-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
-          📂 Gruppen{groups?.length ? ` (${groups.length})` : ""}
+        <button type="button" className="btn btn-ghost min-h-10 flex-1 whitespace-nowrap px-2 text-[13px]" aria-expanded={open} onClick={() => setOpen(!open)}>
+          📂 Gruppen{groups?.length ? ` ${groups.length}` : ""}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost min-h-10 flex-1 whitespace-nowrap px-2 text-[13px] text-red-300"
+          disabled={!hasRefs && !extraCount}
+          onClick={clearAll}
+        >
+          🧹 Leeren
         </button>
       </div>
       {open && (
