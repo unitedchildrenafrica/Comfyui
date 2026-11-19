@@ -13,7 +13,7 @@ import { api, ApiError, loadLocal, saveLocal } from "@/lib/client";
 import { H3_RESOLUTIONS, defaultH3Settings } from "@/lib/defaults";
 import { H3_BLOCK_LABELS, checkH3Prompt, emptyBlocks, nextClipName, parseH3Prompt, safeClipName, splitClipName } from "@/lib/h3prompt";
 import { parseVideoBatch } from "@/lib/h3batch";
-import { refWarnings, tagWarnings } from "@/lib/h3refs";
+import { EXTRA_TAB, refTabName, refTabShort, refWarnings, tagWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Ref, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
 import { RefTabsBar, useRefTabs } from "./RefTabs";
@@ -37,9 +37,11 @@ export function VideoForm() {
   const set = (patch: Partial<H3Settings>) => setS((x) => ({ ...x, ...patch }));
   const refTabs = useRefTabs();
   const tabs = refTabs.tabs;
-  const activeTab = tabs ? Math.min(Math.max(1, s.refTab ?? 1), tabs.length) : 1;
+  const extra = refTabs.extra;
+  // 0 = Tab Extra (nur solange es ihn gibt), sonst 1…N
+  const activeTab = s.refTab === EXTRA_TAB && extra ? EXTRA_TAB : tabs ? Math.min(Math.max(1, s.refTab ?? 1), tabs.length) : 1;
   // Bis die Tabs vom Server da sind, die zuletzt benutzten Refs zeigen
-  const refs = tabs ? tabs[activeTab - 1] : s.refs;
+  const refs = tabs ? (activeTab === EXTRA_TAB ? (extra ?? []) : tabs[activeTab - 1]) : s.refs;
 
   useEffect(() => {
     const stored = loadLocal<{ s: H3Settings; lastSeed: number | null }>(STORAGE_KEY, { s: defaultH3Settings(), lastSeed: null });
@@ -67,12 +69,15 @@ export function VideoForm() {
   // Refs aus einem gespeicherten Job in einen passenden Tab legen, sobald die Tabs geladen sind
   useEffect(() => {
     if (!jobRefs || !tabs) return;
-    const tab = refTabs.placeRefs(jobRefs);
+    // „Einstellungen übernehmen“: Refs des Videos immer in Tab Extra – Tab 1…N bleiben unberührt
+    refTabs.setExtra(jobRefs);
     setJobRefs(null);
-    if (tab) {
-      set({ refTab: tab });
-      setRefNote(jobRefs.length ? `Referenzen des Jobs liegen in Tab ${tab}.` : null);
-    } else if (jobRefs.length) setRefNote("Alle 10 Ref-Tabs sind belegt – die Referenzen des Jobs wurden nicht übernommen.");
+    set({ refTab: EXTRA_TAB });
+    setRefNote(
+      jobRefs.length
+        ? `${jobRefs.length === 1 ? "Die Referenz" : `Die ${jobRefs.length} Referenzen`} des Videos ${jobRefs.length === 1 ? "liegt" : "liegen"} in „Tab Extra“ – deine Tabs 1–${tabs.length} sind unverändert.`
+        : "Das Video hatte keine Referenzen – „Tab Extra“ ist leer.",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobRefs, tabs]);
 
@@ -82,8 +87,8 @@ export function VideoForm() {
   const finalPrompt = isBatch ? "" : h3PromptText(s);
 
   const batch = useMemo(
-    () => (isBatch ? parseVideoBatch(s.batchText ?? "", { mode: s.mode, noDialogue: s.noDialogue, tabs: tabs ?? undefined, defaultTab: activeTab }) : null),
-    [isBatch, s.batchText, s.mode, s.noDialogue, tabs, activeTab],
+    () => (isBatch ? parseVideoBatch(s.batchText ?? "", { mode: s.mode, noDialogue: s.noDialogue, tabs: tabs ?? undefined, extra, defaultTab: activeTab }) : null),
+    [isBatch, s.batchText, s.mode, s.noDialogue, tabs, extra, activeTab],
   );
   const batchReady = !!batch && batch.items.length > 0 && !batch.errors.length;
   const batchSeconds = (batch?.items ?? []).map((it) => it.duration ?? s.duration);
@@ -95,7 +100,7 @@ export function VideoForm() {
     if (isBatch) return [];
     const missingTags = isRef ? tagWarnings(finalPrompt, refs) : [];
     return [
-      ...(missingTags.length ? [`${missingTags.join(", ")} gibt es in Ref-Tab ${activeTab} nicht`] : []),
+      ...(missingTags.length ? [`${missingTags.join(", ")} gibt es in ${refTabName(activeTab)} nicht`] : []),
       ...checkH3Prompt(finalPrompt, useBlocks ? s.blocks.overall_soundscape : finalPrompt, s.noDialogue),
     ];
   }, [isBatch, isRef, finalPrompt, refs, activeTab, useBlocks, s.blocks.overall_soundscape, s.noDialogue]);
@@ -140,7 +145,7 @@ export function VideoForm() {
       setFailedInfo([]);
       const res = await api<{ promptIds: string[]; seeds: number[]; batchId?: string; failed?: { name: string; error: string }[] }>("/api/generate/video", {
         method: "POST",
-        json: { settings: { ...s, refs, refTab: activeTab, refTabs: tabs ?? undefined } },
+        json: { settings: { ...s, refs, refTab: activeTab, refTabs: tabs ?? undefined, refExtra: extra } },
       });
       setSubmitted({ promptIds: res.promptIds, seeds: res.seeds, batchId: res.batchId, kind: "video" });
       if (res.seeds.length) setLastSeed(res.seeds[res.seeds.length - 1]);
@@ -281,7 +286,7 @@ export function VideoForm() {
                         <span className="text-muted">{i + 1}.</span> <span className="font-medium">{it.name || "ohne Namen (Uhrzeit)"}</span>
                         {it.refTab !== null && isRef && (
                           <span className="ml-2 rounded-md bg-card px-1.5 py-0.5 text-xs text-soft">
-                            Tab {it.refTab} · {it.refs?.length ?? 0} Refs
+                            {refTabShort(it.refTab)} · {it.refs?.length ?? 0} Refs
                           </span>
                         )}
                         <span className={`ml-2 rounded-md bg-card px-1.5 py-0.5 text-xs ${it.duration !== null ? "text-accent" : "text-muted"}`}>
@@ -367,10 +372,11 @@ export function VideoForm() {
         {showPreview && !isBatch && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs">{finalPrompt || "(leer)"}</pre>}
       </section>
 
-      <Section title="Referenzen" defaultOpen={refs.length > 0 || (tabs?.some((t) => t.length) ?? false)} right={`Tab ${activeTab} · ${refs.length}`}>
+      <Section title="Referenzen" defaultOpen={refs.length > 0 || (tabs?.some((t) => t.length) ?? false)} right={`${refTabShort(activeTab)} · ${refs.length}`}>
         {tabs && (
           <RefTabsBar
             tabs={tabs}
+            extra={extra}
             active={activeTab}
             onSelect={(tab) => {
               set({ refTab: tab });
@@ -383,15 +389,20 @@ export function VideoForm() {
             onCopy={(to) => {
               const tab = refTabs.copyTab(activeTab, to);
               if (!tab) return;
-              setRefNote(`Tab ${activeTab} nach Tab ${tab} kopiert – jetzt bearbeitest du Tab ${tab}.`);
+              setRefNote(`${refTabShort(activeTab)} nach Tab ${tab} kopiert – jetzt bearbeitest du Tab ${tab}.`);
               set({ refTab: tab });
+            }}
+            onCloseExtra={() => {
+              refTabs.closeExtra();
+              if (activeTab === EXTRA_TAB) set({ refTab: 1 });
+              setRefNote(null);
             }}
           />
         )}
         {refTabs.error && <ErrorBox>{refTabs.error}</ErrorBox>}
         {refNote && <p className="text-xs text-muted">{refNote}</p>}
         {/* key: beim Tab-Wechsel Upload-Zustand des Editors zurücksetzen */}
-        <RefEditor key={activeTab} mode={s.mode} refs={refs} onChange={(r) => (tabs ? refTabs.update(activeTab - 1, r) : set({ refs: r }))} />
+        <RefEditor key={activeTab} mode={s.mode} refs={refs} onChange={(r) => (tabs ? refTabs.update(activeTab, r) : set({ refs: r }))} />
       </Section>
 
       <Section title="Modelle">
@@ -460,7 +471,7 @@ export function VideoForm() {
       </Section>
 
       {s.mode === "REF2VA" && !isBatch && refWarnings(refs).length > 0 && (
-        <WarnBox>Referenzen in Tab {activeTab} prüfen (sonst bricht der Job ab): {refWarnings(refs).join(" ")}</WarnBox>
+        <WarnBox>Referenzen in {refTabShort(activeTab)} prüfen (sonst bricht der Job ab): {refWarnings(refs).join(" ")}</WarnBox>
       )}
       {submitError && (
         <ErrorBox focus>

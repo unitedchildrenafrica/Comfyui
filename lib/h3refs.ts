@@ -17,6 +17,12 @@ export const REF_MAX_IMAGES = 9;
 /** Ref-Tabs: Standard 5, mit „+“ bis 10 */
 export const REF_TABS_DEFAULT = 5;
 export const REF_TABS_MAX = 10;
+/** „Tab Extra“: Zwischenspeicher für „Einstellungen übernehmen“ – Nummer 0, nie im Bereich 1…N */
+export const EXTRA_TAB = 0;
+/** „Ref-Tab 3“ / „Ref-Tab Extra“ für Meldungen */
+export const refTabName = (tab: number) => (tab === EXTRA_TAB ? "Ref-Tab Extra" : `Ref-Tab ${tab}`);
+/** kurz für Knöpfe und Listen: „Tab 3“ / „Extra“ */
+export const refTabShort = (tab: number) => (tab === EXTRA_TAB ? "Extra" : `Tab ${tab}`);
 
 export type VideoMode = NonNullable<H3Ref["mediaMode"]>;
 export const videoMode = (r: H3Ref): VideoMode => r.mediaMode ?? "video";

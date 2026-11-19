@@ -176,3 +176,43 @@ describe("Dauer pro Clip", () => {
     expect(JSON.parse(String(wf["2730"].inputs.builder_state)).duration).toBe(4);
   });
 });
+
+describe("Tab Extra", () => {
+  const extra: H3Ref[] = [img("job1.png"), img("job2.png")];
+  it("„Ref-Tab Extra“ wird erkannt", () => {
+    expect(parseRefTabLine("Ref-Tab Extra")).toBe(0);
+    expect(parseRefTabLine("**reftab extra**")).toBe(0);
+    expect(parseRefTabLine("Ref-Tab Extras")).toBeNull();
+  });
+
+  it("nimmt im Batch die Refs aus Tab Extra – per Zeile oder als gewählter Tab", () => {
+    const text = `Ref-Tab Extra\nClip 1\n${prompt("A")}\n---\nClip 2\n${prompt("B")}`;
+    const r = parseVideoBatch(text, { ...REF, extra, defaultTab: 0 });
+    expect(r.errors).toEqual([]);
+    expect(r.items.map((i) => [i.name, i.refTab, i.refs?.map((x) => x.filename).join(",")])).toEqual([
+      ["Clip 1", 0, "job1.png,job2.png"],
+      ["Clip 2", 0, "job1.png,job2.png"],
+    ]);
+  });
+
+  it("meldet „Ref-Tab Extra“, wenn es keinen Extra-Tab gibt", () => {
+    const r = parseVideoBatch(`Ref-Tab Extra\nClip 1\n${prompt("A")}`, REF);
+    expect(r.errors[0].message).toContain("Ref-Tab Extra");
+  });
+
+  it("speichert im Job weder alle Tabs noch den Extra-Tab mit", () => {
+    const s = { ...defaultH3Settings(), promptInput: "batch" as const, refTabs: tabs, refExtra: extra, refTab: 0, batchText: `Clip 1\n${prompt("A")}` };
+    const { items } = parseVideoBatch(s.batchText, { ...REF, extra, defaultTab: 0 });
+    const one = settingsForItem(s, items[0]);
+    expect(one.refs.map((x) => x.filename)).toEqual(["job1.png", "job2.png"]);
+    expect(one.refTab).toBe(0);
+    expect(one.refExtra).toBeUndefined();
+    expect(one.refTabs).toBeUndefined();
+  });
+
+  it("cleanTab prüft den Extra-Tab wie normale Tabs", async () => {
+    const { cleanTab } = await import("@/lib/server/refTabs");
+    expect(cleanTab([{ kind: "image", filename: "a.png", x: 1 }])).toEqual([{ kind: "image", filename: "a.png" }]);
+    expect(cleanTab([{ kind: "exe", filename: "a" }])).toBeNull();
+  });
+});

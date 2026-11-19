@@ -111,7 +111,7 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
 
 export async function submitVideoJob(input: H3Settings) {
   // Alle Tabs werden nur zum Abschicken mitgeschickt – im Job nur die tatsächlich benutzten Refs
-  const { refTabs: _t, ...settings } = input;
+  const { refTabs: _t, refExtra: _e, ...settings } = input;
   await ensureRefsOnPod(settings.refs ?? []);
   const seed = settings.seed ?? randomSeed();
   const wf = buildH3({ settings, seed });
@@ -140,6 +140,7 @@ export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResu
     mode: settings.mode,
     noDialogue: settings.noDialogue,
     tabs: settings.refTabs,
+    extra: settings.refExtra,
     defaultTab: settings.refTab,
   });
   if (errors.length) throw new BatchParseError(errors);

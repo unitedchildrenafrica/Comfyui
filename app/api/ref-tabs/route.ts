@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { badRequest, errorResponse } from "@/lib/server/http";
-import { cleanTabs, getRefTabs, saveRefTabs } from "@/lib/server/refTabs";
+import { cleanTab, cleanTabs, getRefTabs, saveRefTabs } from "@/lib/server/refTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const data = await getRefTabs();
-    return Response.json({ tabs: data?.tabs ?? null, updatedAt: data?.updatedAt ?? null });
+    return Response.json({ tabs: data?.tabs ?? null, extra: data?.extra ?? null, updatedAt: data?.updatedAt ?? null });
   } catch (err) {
     return errorResponse(err);
   }
@@ -16,9 +16,11 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const tabs = cleanTabs(((await req.json()) as { tabs?: unknown }).tabs);
-    if (!tabs) return badRequest("Ungültige Ref-Tabs");
-    return Response.json(await saveRefTabs(tabs));
+    const body = (await req.json()) as { tabs?: unknown; extra?: unknown };
+    const tabs = cleanTabs(body.tabs);
+    const extra = body.extra == null ? null : cleanTab(body.extra);
+    if (!tabs || (body.extra != null && !extra)) return badRequest("Ungültige Ref-Tabs");
+    return Response.json(await saveRefTabs(tabs, extra));
   } catch (err) {
     return errorResponse(err);
   }

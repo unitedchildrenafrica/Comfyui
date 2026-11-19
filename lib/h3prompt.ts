@@ -77,13 +77,15 @@ const plainLine = (line: string) => line.trim().replace(/^#+\s*/, "").replace(/^
 /** Ist die Zeile eine Clip-Zeile wie „Clip 35“ / „**Clip 35**“? */
 export const isClipLine = (line: string) => CLIP_LINE.test(plainLine(line));
 
-/** „Ref-Tab 3“, „Reftab 3“, „Ref 3“, „Ref Tab: 3“ */
-const REF_TAB_LINE = /^ref(?:[\s\-_]*tab)?\s*[:#]?\s*#?\s*(\d{1,2})$/i;
+/** „Ref-Tab 3“, „Reftab 3“, „Ref 3“, „Ref Tab: 3“, „Ref-Tab Extra“ */
+const REF_TAB_LINE = /^ref(?:[\s\-_]*tab)?\s*[:#]?\s*#?\s*(\d{1,2}|extra)$/i;
 
-/** Nummer aus einer Ref-Tab-Zeile (1-basiert) oder null */
+/** Nummer aus einer Ref-Tab-Zeile (1-basiert, 0 = „Tab Extra“) oder null */
 export function parseRefTabLine(line: string): number | null {
   const m = plainLine(line).match(REF_TAB_LINE);
-  const n = m ? Number(m[1]) : 0;
+  if (!m) return null;
+  if (m[1].toLowerCase() === "extra") return 0;
+  const n = Number(m[1]);
   return n >= 1 ? n : null;
 }
 

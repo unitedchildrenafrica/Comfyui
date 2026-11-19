@@ -2,7 +2,7 @@
 
 import type { BatchError } from "./batch";
 import { buildH3Prompt, checkH3Prompt, hasBlockHeading, isClipLine, parseDurationLine, parseH3Prompt, parseRefTabLine, splitClipName } from "./h3prompt";
-import { refLimitError, tagWarnings } from "./h3refs";
+import { EXTRA_TAB, refLimitError, refTabName, tagWarnings } from "./h3refs";
 import type { H3Blocks, H3Ref, H3Settings } from "./types";
 
 export interface VideoBatchItem {
@@ -17,7 +17,7 @@ export interface VideoBatchItem {
   /** kurze Vorschau für die Liste */
   preview: string;
   warnings: string[];
-  /** Ref-Tab dieses Clips (1-basiert); null = ohne Tabs (altes Formular) */
+  /** Ref-Tab dieses Clips (1-basiert, 0 = Tab Extra); null = ohne Tabs (altes Formular) */
   refTab: number | null;
   /** Referenzen aus diesem Tab; null = Formular-Referenzen */
   refs: H3Ref[] | null;
@@ -102,7 +102,9 @@ export function parseVideoBatch(
     noDialogue: boolean;
     /** alle Ref-Tabs; ohne = kein Wechsel pro Clip */
     tabs?: H3Ref[][];
-    /** Tab für Clips ohne Ref-Tab-Zeile (1-basiert) */
+    /** „Tab Extra“ (aus „Einstellungen übernehmen“), falls vorhanden */
+    extra?: H3Ref[] | null;
+    /** Tab für Clips ohne Ref-Tab-Zeile (1-basiert, 0 = Tab Extra) */
     defaultTab?: number;
   },
 ): { items: VideoBatchItem[]; errors: BatchError[]; skipped: string[] } {
@@ -128,22 +130,23 @@ export function parseVideoBatch(
     const refNotes: string[] = [];
     if (opts.tabs) {
       refTab = wanted ?? opts.defaultTab ?? 1;
-      const tabRefs = opts.tabs[refTab - 1];
+      const tabRefs = refTab === EXTRA_TAB ? opts.extra : opts.tabs[refTab - 1];
       if (!tabRefs) {
-        if (hasBlockHeading(text) || !isRef) errors.push({ block, message: `${name ? `„${name}“: ` : ""}Ref-Tab ${refTab} gibt es nicht (nur 1–${opts.tabs.length})` });
+        const why = refTab === EXTRA_TAB ? "Ref-Tab Extra gibt es gerade nicht (entsteht bei „Einstellungen übernehmen“)" : `Ref-Tab ${refTab} gibt es nicht (nur 1–${opts.tabs.length})`;
+        if (hasBlockHeading(text) || !isRef) errors.push({ block, message: `${label}${why}` });
         return;
       }
       refs = tabRefs;
       const limit = refLimitError(tabRefs);
       if (limit && isRef) {
-        errors.push({ block, message: `${name ? `„${name}“: ` : ""}Ref-Tab ${refTab}: ${limit}` });
+        errors.push({ block, message: `${label}${refTabName(refTab)}: ${limit}` });
         return;
       }
-      if (isRef && !tabRefs.length) refNotes.push(`Ref-Tab ${refTab} ist leer`);
+      if (isRef && !tabRefs.length) refNotes.push(`${refTabName(refTab)} ist leer`);
       const missingTags = tagWarnings(text, tabRefs);
-      if (missingTags.length) refNotes.push(`${missingTags.join(", ")} gibt es in Ref-Tab ${refTab} nicht`);
+      if (missingTags.length) refNotes.push(`${missingTags.join(", ")} gibt es in ${refTabName(refTab)} nicht`);
     } else if (wanted !== null) {
-      refNotes.push(`„Ref-Tab ${wanted}“ ignoriert – keine Ref-Tabs geladen`);
+      refNotes.push(`„${refTabName(wanted)}“ ignoriert – keine Ref-Tabs geladen`);
     }
     if (isRef) {
       if (!hasBlockHeading(text)) {
@@ -189,7 +192,7 @@ export function parseVideoBatch(
 
 /** Einstellungen für einen einzelnen Clip des Batches (so wird er auch gespeichert → „nochmal“ geht) */
 export function settingsForItem(s: H3Settings, item: VideoBatchItem): H3Settings {
-  const { batchText: _b, refTabs: _t, ...base } = s;
+  const { batchText: _b, refTabs: _t, refExtra: _e, ...base } = s;
   const withRefs = item.refs ? { ...base, refs: item.refs, refTab: item.refTab ?? base.refTab } : base;
   const rest = item.duration !== null ? { ...withRefs, duration: item.duration } : withRefs;
   return item.blocks

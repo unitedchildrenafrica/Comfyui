@@ -118,6 +118,8 @@ export interface H3Settings {
   refTab?: number;
   /** Nur beim Abschicken: alle Ref-Tabs, damit der Batch pro Clip wechseln kann (wird nicht gespeichert) */
   refTabs?: H3Ref[][];
+  /** Nur beim Abschicken: „Tab Extra“ (refTab 0), wird nicht gespeichert */
+  refExtra?: H3Ref[] | null;
   /** Clip-Name für die Datei (z. B. „Clip 35“ → Clip_35_00001.mp4), leer = Datum/Uhrzeit */
   clipName?: string;
   /** Video-Batch: Prompts getrennt durch „---“ oder „Clip N“-Zeilen */
