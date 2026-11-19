@@ -5,15 +5,20 @@ import { api } from "@/lib/client";
 import { EXTRA_TAB, REF_TABS_DEFAULT, REF_TABS_MAX, refTabShort } from "@/lib/h3refs";
 import type { H3Ref } from "@/lib/types";
 
+export const emptyTabs = (): H3Ref[][] => Array.from({ length: REF_TABS_DEFAULT }, () => []);
+
 interface TabsState {
   tabs: H3Ref[][];
   /** „Tab Extra“ (Nummer 0) – entsteht bei „Einstellungen übernehmen“ und wird dort jedes Mal ersetzt */
   extra: H3Ref[] | null;
+  /** zuletzt geladene/gespeicherte Tab-Gruppe */
+  group: string | null;
 }
 
 interface TabsResponse {
   tabs: H3Ref[][] | null;
   extra?: H3Ref[] | null;
+  group?: string | null;
 }
 
 /**
@@ -52,7 +57,7 @@ export function useRefTabs() {
   );
 
   const apply = (res: TabsResponse) => {
-    const next = { tabs: res.tabs!, extra: res.extra ?? null };
+    const next = { tabs: res.tabs!, extra: res.extra ?? null, group: res.group ?? null };
     latest.current = next;
     setState(next);
   };
@@ -63,7 +68,7 @@ export function useRefTabs() {
       try {
         const res = await api<TabsResponse>("/api/ref-tabs");
         if (res.tabs?.length) apply(res);
-        else commit({ tabs: [legacyRefs ?? [], ...Array.from({ length: REF_TABS_DEFAULT - 1 }, () => [])], extra: null });
+        else commit({ tabs: [legacyRefs ?? [], ...emptyTabs().slice(1)], extra: null, group: null });
       } catch (err) {
         setError(`Ref-Tabs nicht geladen: ${(err as Error).message}`);
       }
@@ -132,12 +137,36 @@ export function useRefTabs() {
     if (cur) commit({ ...cur, extra: refs.map((r) => ({ ...r })) });
   };
 
+  /** Tab-Gruppe laden bzw. leere Tabs: alle Tabs ersetzen (Tab Extra bleibt) */
+  const replaceAll = (tabs: H3Ref[][], group: string | null) => {
+    const cur = latest.current;
+    if (cur) commit({ ...cur, tabs: tabs.map((t) => t.map((r) => ({ ...r }))), group });
+  };
+
+  const setGroupName = (group: string | null) => {
+    const cur = latest.current;
+    if (cur) commit({ ...cur, group });
+  };
+
   const closeExtra = () => {
     const cur = latest.current;
     if (cur) commit({ ...cur, extra: null });
   };
 
-  return { tabs: state?.tabs ?? null, extra: state?.extra ?? null, error, init, update, addTab, copyTab, setExtra, closeExtra };
+  return {
+    tabs: state?.tabs ?? null,
+    extra: state?.extra ?? null,
+    group: state?.group ?? null,
+    error,
+    init,
+    update,
+    addTab,
+    copyTab,
+    setExtra,
+    closeExtra,
+    replaceAll,
+    setGroupName,
+  };
 }
 
 export function RefTabsBar({

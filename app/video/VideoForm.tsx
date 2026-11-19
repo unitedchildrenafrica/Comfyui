@@ -16,7 +16,8 @@ import { parseVideoBatch } from "@/lib/h3batch";
 import { EXTRA_TAB, refTabName, refTabShort, refWarnings, tagWarnings } from "@/lib/h3refs";
 import { H3_BLOCK_KEYS, type H3Ref, type H3Settings, type JobRecord } from "@/lib/types";
 import { RefEditor, imageLimit } from "./RefEditor";
-import { RefTabsBar, useRefTabs } from "./RefTabs";
+import { RefTabsBar, emptyTabs, useRefTabs } from "./RefTabs";
+import { TabGroups } from "./TabGroups";
 
 const STORAGE_KEY = "pf.video.v1";
 
@@ -373,6 +374,18 @@ export function VideoForm() {
       </section>
 
       <Section title="Referenzen" defaultOpen={refs.length > 0 || (tabs?.some((t) => t.length) ?? false)} right={`${refTabShort(activeTab)} · ${refs.length}`}>
+        {tabs && (
+          <TabGroups
+            tabs={tabs}
+            group={refTabs.group}
+            onSaved={(name) => refTabs.setGroupName(name)}
+            onLoad={(groupTabs, name) => {
+              refTabs.replaceAll(groupTabs.length ? groupTabs : emptyTabs(), name);
+              if (activeTab !== EXTRA_TAB) set({ refTab: 1 });
+              setRefNote(null);
+            }}
+          />
+        )}
         {tabs && (
           <RefTabsBar
             tabs={tabs}

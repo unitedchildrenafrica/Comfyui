@@ -11,6 +11,8 @@ export interface RefTabsData {
   tabs: H3Ref[][];
   /** „Tab Extra“ aus „Einstellungen übernehmen“ (null = gerade keiner) */
   extra?: H3Ref[] | null;
+  /** Name der zuletzt geladenen/gespeicherten Tab-Gruppe (nur Anzeige) */
+  group?: string | null;
   updatedAt: number;
 }
 
@@ -54,8 +56,8 @@ export function cleanTabs(input: unknown): H3Ref[][] | null {
   return tabs;
 }
 
-export async function saveRefTabs(tabs: H3Ref[][], extra: H3Ref[] | null = null): Promise<RefTabsData> {
-  const data: RefTabsData = { tabs, extra, updatedAt: Date.now() };
+export async function saveRefTabs(tabs: H3Ref[][], extra: H3Ref[] | null = null, group: string | null = null): Promise<RefTabsData> {
+  const data: RefTabsData = { tabs, extra, group, updatedAt: Date.now() };
   await fs.mkdir(path.dirname(file()), { recursive: true });
   const tmp = `${file()}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(data));
