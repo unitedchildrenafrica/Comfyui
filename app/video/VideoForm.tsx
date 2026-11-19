@@ -364,10 +364,19 @@ export function VideoForm() {
           <RefTabsBar
             tabs={tabs}
             active={activeTab}
-            onSelect={(tab) => set({ refTab: tab })}
+            onSelect={(tab) => {
+              set({ refTab: tab });
+              setRefNote(null);
+            }}
             onAdd={() => {
               const tab = refTabs.addTab();
               if (tab) set({ refTab: tab });
+            }}
+            onCopy={(to) => {
+              const tab = refTabs.copyTab(activeTab, to);
+              if (!tab) return;
+              setRefNote(`Tab ${activeTab} nach Tab ${tab} kopiert – jetzt bearbeitest du Tab ${tab}.`);
+              set({ refTab: tab });
             }}
           />
         )}

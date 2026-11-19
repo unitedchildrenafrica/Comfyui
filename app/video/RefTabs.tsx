@@ -98,6 +98,18 @@ export function useRefTabs() {
     return cur.length + 1;
   };
 
+  /** Tab 1:1 kopieren (Kopie der Liste, die Dateien selbst bleiben dieselben). to = null → neuer Tab */
+  const copyTab = (from: number, to: number | null): number | null => {
+    const cur = latest.current;
+    const src = cur?.[from - 1];
+    if (!cur || !src) return null;
+    const copy = src.map((r) => ({ ...r }));
+    if (to === null) return addTab(copy);
+    if (!cur[to - 1] || to === from) return null;
+    update(to - 1, copy);
+    return to;
+  };
+
   /**
    * Refs eines gespeicherten Jobs („nochmal“, Galerie): Tab mit gleichem Inhalt wählen, sonst in einen
    * leeren oder neuen Tab legen – nie einen bestehenden überschreiben. Rückgabe: Tab-Nummer oder null.
@@ -116,10 +128,33 @@ export function useRefTabs() {
     return addTab(refs);
   };
 
-  return { tabs, error, init, update, addTab, placeRefs };
+  return { tabs, error, init, update, addTab, copyTab, placeRefs };
 }
 
-export function RefTabsBar({ tabs, active, onSelect, onAdd }: { tabs: H3Ref[][]; active: number; onSelect: (tab: number) => void; onAdd: () => void }) {
+export function RefTabsBar({
+  tabs,
+  active,
+  onSelect,
+  onAdd,
+  onCopy,
+}: {
+  tabs: H3Ref[][];
+  active: number;
+  onSelect: (tab: number) => void;
+  onAdd: () => void;
+  /** to = null → in einen neuen Tab */
+  onCopy: (to: number | null) => void;
+}) {
+  const [copyTo, setCopyTo] = useState("");
+  const canAdd = tabs.length < REF_TABS_MAX;
+  const copy = () => {
+    if (!copyTo) return;
+    const to = copyTo === "new" ? null : Number(copyTo);
+    const target = to ? tabs[to - 1] : null;
+    if (target?.length && !window.confirm(`Tab ${to} hat schon ${target.length} Referenzen. Durch Tab ${active} ersetzen?`)) return;
+    onCopy(to);
+    setCopyTo("");
+  };
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Ref-Tabs">
@@ -142,6 +177,26 @@ export function RefTabsBar({ tabs, active, onSelect, onAdd }: { tabs: H3Ref[][];
           </button>
         )}
       </div>
+      {tabs[active - 1]?.length > 0 && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="shrink-0 text-soft">Tab {active} kopieren nach</span>
+          <select className="input min-h-10 flex-1 py-1" value={copyTo} onChange={(e) => setCopyTo(e.target.value)} aria-label="Ziel-Tab">
+            <option value="">wählen …</option>
+            {tabs.map((t, i) =>
+              i + 1 === active ? null : (
+                <option key={i} value={i + 1}>
+                  Tab {i + 1}
+                  {t.length ? ` (${t.length} Refs – wird ersetzt)` : " (leer)"}
+                </option>
+              ),
+            )}
+            {canAdd && <option value="new">neuen Tab</option>}
+          </select>
+          <button type="button" className="btn btn-ghost min-h-10 px-3" disabled={!copyTo} onClick={copy}>
+            Kopieren
+          </button>
+        </div>
+      )}
       <p className="text-xs text-muted">
         Jeder Tab hat eigene Bilder, Videos und Audios. Im Batch wählt eine Zeile „Ref-Tab 3“ über „Clip 35“ den Tab für diesen Clip – ohne Zeile gilt der gewählte Tab.
       </p>
