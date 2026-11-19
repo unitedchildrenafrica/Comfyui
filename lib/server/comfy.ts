@@ -41,6 +41,15 @@ export async function comfyFetch(path: string, init: RequestInit & { timeoutMs?:
       `Pod-Tunnel nicht erreichbar (HTTP ${res.status}) – der Pod baut ihn gerade neu auf. In 1–2 Minuten nochmal versuchen.`,
     );
   }
+  // 502–504 = Tunnel steht, aber dahinter antwortet nichts (ComfyUI startet neu, ist abgestürzt
+  // oder das Gateway auf dem Pod läuft nicht). ComfyUI selbst liefert diese Codes nie.
+  if (serverMode() && res.status >= 502 && res.status <= 504) {
+    await res.body?.cancel().catch(() => {});
+    throw new ComfyUnavailableError(
+      undefined,
+      `Pod antwortet nicht (HTTP ${res.status}) – ComfyUI startet gerade neu oder ist abgestürzt. Im Pod-Terminal prüfen: tail -20 /workspace/comfy.log`,
+    );
+  }
   return res;
 }
 

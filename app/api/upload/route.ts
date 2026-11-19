@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
-import { comfyFetch } from "@/lib/server/comfy";
+import { ComfyUnavailableError, comfyFetch } from "@/lib/server/comfy";
 import { badRequest, errorResponse } from "@/lib/server/http";
-import { saveRefCopy } from "@/lib/server/refs";
+import { serverMode } from "@/lib/server/podLink";
+import { offlineName, refCopyPath, saveRefCopy } from "@/lib/server/refs";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,24 @@ export async function POST(req: NextRequest) {
     out.append("image", new Blob([new Uint8Array(data)], { type: file.type }), file.name);
     out.append("type", "input");
     out.append("overwrite", "false");
-    const res = await comfyFetch("/upload/image", { method: "POST", body: out, timeoutMs: 120_000 });
-    if (!res.ok) return badRequest(`Upload fehlgeschlagen: ${await res.text()}`);
+    let res: Response;
+    try {
+      res = await comfyFetch("/upload/image", { method: "POST", body: out, timeoutMs: 120_000 });
+    } catch (err) {
+      // Server-Modus und Pod gerade weg: nur auf dem Server ablegen. Vor dem nächsten Video wird
+      // die Datei automatisch auf den Pod geladen (ensureRefsOnPod) – Ref-Tabs lassen sich so
+      // auch ohne laufenden Pod vorbereiten.
+      if (!(serverMode() && err instanceof ComfyUnavailableError)) throw err;
+      const filename = offlineName(file.name);
+      if (!refCopyPath(filename)) throw err;
+      await saveRefCopy(filename, data);
+      return Response.json({ filename, name: filename, subfolder: "", pending: true });
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // keine HTML-Fehlerseiten in die Meldung kippen
+      return badRequest(`Upload fehlgeschlagen (HTTP ${res.status})${text && !text.trimStart().startsWith("<") ? `: ${text.slice(0, 300)}` : ""}`);
+    }
     const result = (await res.json()) as { name: string; subfolder?: string; type?: string };
     const filename = result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
     // Server-Modus: Kopie behalten – auf einem neuen Pod wird sie vor dem Video wieder hochgeladen

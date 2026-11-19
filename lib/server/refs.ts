@@ -20,6 +20,14 @@ export function refCopyPath(filename: string): string | null {
   return abs.startsWith(root + path.sep) ? abs : null;
 }
 
+/** Eindeutiger Name für Dateien, die (noch) nicht auf dem Pod liegen – kollidiert nie mit Pod-Dateien */
+export function offlineName(original: string): string {
+  const dot = original.lastIndexOf(".");
+  const ext = dot > 0 ? original.slice(dot).toLowerCase().replace(/[^.a-z0-9]/g, "").slice(0, 8) : "";
+  const base = (dot > 0 ? original.slice(0, dot) : original).replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "ref";
+  return `${base}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}${ext}`;
+}
+
 export async function saveRefCopy(filename: string, data: Buffer) {
   if (!serverMode()) return;
   const abs = refCopyPath(filename);

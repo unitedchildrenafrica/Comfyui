@@ -117,3 +117,16 @@ describe("Ref-Tabs speichern", () => {
     expect(cleanTabs("nope")).toBeNull();
   });
 });
+
+describe("Upload ohne Pod", () => {
+  it("offlineName ist dateisicher, eindeutig und behält die Endung", async () => {
+    const { offlineName, refCopyPath } = await import("@/lib/server/refs");
+    const a = offlineName("IMG 3441 (1).PNG");
+    expect(a).toMatch(/^IMG_3441_1_[a-z0-9]+\.png$/);
+    expect(offlineName("x.png")).not.toBe(offlineName("x.png"));
+    expect(offlineName("../../etc/passwd")).not.toContain("/");
+    expect(refCopyPath(offlineName("../../etc/passwd"))).not.toBeNull();
+    expect(offlineName(".mp3")).toMatch(/^[\w-]+_[a-z0-9]+$/);
+    expect(offlineName("###.png")).toMatch(/^ref_[a-z0-9]+\.png$/);
+  });
+});
