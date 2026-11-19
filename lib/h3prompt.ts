@@ -87,6 +87,17 @@ export function parseRefTabLine(line: string): number | null {
   return n >= 1 ? n : null;
 }
 
+/** „Dauer 8“, „Dauer: 8 s“, „Länge 8“, „Duration 8“ – oder nur „8s“ / „8 Sekunden“ */
+const DURATION_KEY = /^(?:dauer|l(?:ä|ae)nge|duration|length)\s*[:=]?\s*(\d{1,2})\s*(?:s|sek\.?|sekunden|sec|secs|seconds)?$/i;
+const DURATION_UNIT = /^(\d{1,2})\s*(?:s|sek\.?|sekunden|sec|secs|seconds)$/i;
+
+/** Sekunden aus einer Dauer-Zeile oder null (Bereich prüft der Batch-Parser) */
+export function parseDurationLine(line: string): number | null {
+  const plain = plainLine(line);
+  const m = plain.match(DURATION_KEY) ?? plain.match(DURATION_UNIT);
+  return m ? Number(m[1]) : null;
+}
+
 /** Enthält der Text mindestens eine Block-Überschrift (summary:, detailed_description: …)? */
 export const hasBlockHeading = (text: string) => new RegExp(HEADING_RE.source, "im").test(text);
 

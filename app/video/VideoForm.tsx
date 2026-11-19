@@ -86,6 +86,11 @@ export function VideoForm() {
     [isBatch, s.batchText, s.mode, s.noDialogue, tabs, activeTab],
   );
   const batchReady = !!batch && batch.items.length > 0 && !batch.errors.length;
+  const batchSeconds = (batch?.items ?? []).map((it) => it.duration ?? s.duration);
+  const batchLabel =
+    batchSeconds.length && batchSeconds.some((x) => x !== batchSeconds[0])
+      ? `Batch generieren – ${batchSeconds.length} Clips · ${batchSeconds.reduce((a, b) => a + b, 0)}s`
+      : `Batch generieren – ${batchSeconds.length} Clips × ${batchSeconds[0] ?? s.duration}s`;
   const warnings = useMemo(() => {
     if (isBatch) return [];
     const missingTags = isRef ? tagWarnings(finalPrompt, refs) : [];
@@ -167,7 +172,7 @@ export function VideoForm() {
         <Field label="Modus">
           <Select value={s.mode} onChange={(v) => set({ mode: v })} options={modes} />
         </Field>
-        <Field label="Dauer (Sekunden)">
+        <Field label="Dauer (Sekunden)" hint={isBatch ? "Im Batch: gilt für Clips ohne eigene Zeile „Dauer 8“." : undefined}>
           <Slider value={s.duration} min={2} max={15} step={1} onChange={(v) => set({ duration: v })} />
         </Field>
         <Field
@@ -246,12 +251,12 @@ export function VideoForm() {
           <div className="space-y-3">
             <Field
               label="Viele Prompts auf einmal"
-              hint="Prompts mit einer Zeile „---“ trennen – oder einfach jeden mit „Clip 35“, „Clip 36“ … beginnen. Die Clip-Zeile wird zum Dateinamen. Darüber eine Zeile „Ref-Tab 3“ nimmt für diesen Clip die Referenzen aus Tab 3, sonst gilt der gewählte Tab. Einstellungen und LoRAs gelten für alle Clips. Jeder Clip wird ein eigener Job und sofort in die Warteschlange gestellt – läuft auch bei gesperrtem Handy weiter."
+              hint="Prompts mit einer Zeile „---“ trennen – oder einfach jeden mit „Clip 35“, „Clip 36“ … beginnen. Die Clip-Zeile wird zum Dateinamen. Darüber eine Zeile „Ref-Tab 3“ nimmt für diesen Clip die Referenzen aus Tab 3 (sonst der gewählte Tab), eine Zeile „Dauer 8“ macht ihn 8 s lang (sonst der Regler oben). Alle anderen Einstellungen und LoRAs gelten für alle Clips. Jeder Clip wird ein eigener Job und sofort in die Warteschlange gestellt – läuft auch bei gesperrtem Handy weiter."
             >
               <textarea
                 className="input min-h-72 text-sm"
                 value={s.batchText ?? ""}
-                placeholder={"Ref-Tab 1\nClip 35\nsubject_definitions:\n…\n\n---\n\nRef-Tab 3\nClip 36\nsubject_definitions:\n…"}
+                placeholder={"Ref-Tab 1\nClip 35\nDauer 8\nsubject_definitions:\n…\n\n---\n\nRef-Tab 3\nClip 36\nDauer 12\nsubject_definitions:\n…"}
                 onChange={(e) => set({ batchText: e.target.value })}
               />
             </Field>
@@ -279,6 +284,9 @@ export function VideoForm() {
                             Tab {it.refTab} · {it.refs?.length ?? 0} Refs
                           </span>
                         )}
+                        <span className={`ml-2 rounded-md bg-card px-1.5 py-0.5 text-xs ${it.duration !== null ? "text-accent" : "text-muted"}`}>
+                          {it.duration ?? s.duration} s
+                        </span>
                       </p>
                       {it.preview && <p className="truncate text-xs text-muted">{it.preview}</p>}
                       {it.warnings.map((w) => (
@@ -484,7 +492,7 @@ export function VideoForm() {
           {submitting
             ? "Wird eingereiht …"
             : isBatch
-              ? `Batch generieren – ${batch?.items.length ?? 0} Clips × ${s.duration}s`
+              ? batchLabel
               : `Video generieren – ${s.duration}s`}
         </button>
       </div>

@@ -1,7 +1,7 @@
 // Video-Batch: viele H3-Prompts auf einmal, jeder wird ein eigener Job (wie beim Bild-Batch).
 
 import type { BatchError } from "./batch";
-import { buildH3Prompt, checkH3Prompt, hasBlockHeading, isClipLine, parseH3Prompt, parseRefTabLine, splitClipName } from "./h3prompt";
+import { buildH3Prompt, checkH3Prompt, hasBlockHeading, isClipLine, parseDurationLine, parseH3Prompt, parseRefTabLine, splitClipName } from "./h3prompt";
 import { refLimitError, tagWarnings } from "./h3refs";
 import type { H3Blocks, H3Ref, H3Settings } from "./types";
 
@@ -21,7 +21,16 @@ export interface VideoBatchItem {
   refTab: number | null;
   /** Referenzen aus diesem Tab; null = Formular-Referenzen */
   refs: H3Ref[] | null;
+  /** Dauer in Sekunden aus einer Zeile „Dauer 8“; null = Dauer aus dem Formular */
+  duration: number | null;
 }
+
+/** Erlaubte Dauer pro Clip (wie der Regler) */
+export const CLIP_MIN_SECONDS = 2;
+export const CLIP_MAX_SECONDS = 15;
+
+/** Kopfzeile über dem Prompt, die kein Clip-Name ist: „Ref-Tab 3“ oder „Dauer 8“ */
+const isHeaderLine = (line: string) => parseRefTabLine(line) !== null || parseDurationLine(line) !== null;
 
 export const VIDEO_BATCH_MAX = 300;
 
@@ -53,9 +62,14 @@ export function splitVideoBatch(raw: string): string[] {
     let cur: string[] = [];
     for (const line of chunk) {
       if (isClipLine(line) && cur.some((l) => l.trim())) {
-        // „Ref-Tab 3“ direkt über „Clip 35“ gehört zum neuen Clip
-        const last = cur.findLastIndex((l) => l.trim());
-        const carry = parseRefTabLine(cur[last]) !== null ? cur.splice(last) : [];
+        // „Ref-Tab 3“ / „Dauer 8“ direkt über „Clip 35“ gehören zum neuen Clip
+        let start = cur.length;
+        for (let k = cur.length - 1; k >= 0; k--) {
+          if (!cur[k].trim()) continue;
+          if (!isHeaderLine(cur[k])) break;
+          start = k;
+        }
+        const carry = cur.splice(start);
         if (cur.some((l) => l.trim())) out.push(cur.join("\n"));
         cur = carry;
       }
@@ -66,12 +80,19 @@ export function splitVideoBatch(raw: string): string[] {
   return out.filter((c) => c.trim());
 }
 
-/** Ref-Tab-Zeile oben im Abschnitt (vor oder nach der Clip-Zeile) abtrennen */
-function takeRefTabLine(text: string): { tab: number | null; text: string } {
+/** Kopfzeilen „Ref-Tab 3“ / „Dauer 8“ oben im Abschnitt abtrennen (beliebige Reihenfolge) */
+function takeHeaders(text: string, into: { tab: number | null; duration: number | null }): string {
   const lines = text.split("\n");
-  const first = lines.findIndex((l) => l.trim());
-  const tab = first >= 0 ? parseRefTabLine(lines[first]) : null;
-  return tab === null ? { tab, text } : { tab, text: lines.slice(first + 1).join("\n") };
+  let i = 0;
+  for (; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const tab = parseRefTabLine(lines[i]);
+    const duration = tab === null ? parseDurationLine(lines[i]) : null;
+    if (tab !== null) into.tab ??= tab;
+    else if (duration !== null) into.duration ??= duration;
+    else break;
+  }
+  return lines.slice(i).join("\n");
 }
 
 export function parseVideoBatch(
@@ -91,13 +112,17 @@ export function parseVideoBatch(
   const isRef = opts.mode === "REF2VA";
   splitVideoBatch(raw).forEach((chunk, i) => {
     const block = i + 1;
-    // Reihenfolge egal: „Ref-Tab 3“ über oder unter „Clip 35“
-    const before = takeRefTabLine(chunk);
-    const clip = splitClipName(before.text);
-    const after = before.tab === null ? takeRefTabLine(clip.text) : { tab: null, text: clip.text };
+    // Reihenfolge egal: „Ref-Tab 3“ / „Dauer 8“ über oder unter „Clip 35“
+    const head: { tab: number | null; duration: number | null } = { tab: null, duration: null };
+    const clip = splitClipName(takeHeaders(chunk, head));
     const name = clip.name;
-    const text = after.text.trim();
-    const wanted = before.tab ?? after.tab;
+    const text = takeHeaders(clip.text, head).trim();
+    const wanted = head.tab;
+    const label = name ? `„${name}“: ` : "";
+    if (head.duration !== null && (head.duration < CLIP_MIN_SECONDS || head.duration > CLIP_MAX_SECONDS)) {
+      if (hasBlockHeading(text) || !isRef) errors.push({ block, message: `${label}Dauer ${head.duration} s – erlaubt sind ${CLIP_MIN_SECONDS}–${CLIP_MAX_SECONDS} s` });
+      return;
+    }
     let refTab: number | null = null;
     let refs: H3Ref[] | null = null;
     const refNotes: string[] = [];
@@ -141,6 +166,7 @@ export function parseVideoBatch(
         warnings: [...refNotes, ...checkH3Prompt(full, blocks.overall_soundscape, opts.noDialogue)],
         refTab,
         refs,
+        duration: head.duration,
       });
     } else {
       if (!text.trim()) return;
@@ -153,6 +179,7 @@ export function parseVideoBatch(
         warnings: [...refNotes, ...checkH3Prompt(text, text, opts.noDialogue)],
         refTab,
         refs,
+        duration: head.duration,
       });
     }
   });
@@ -163,7 +190,8 @@ export function parseVideoBatch(
 /** Einstellungen für einen einzelnen Clip des Batches (so wird er auch gespeichert → „nochmal“ geht) */
 export function settingsForItem(s: H3Settings, item: VideoBatchItem): H3Settings {
   const { batchText: _b, refTabs: _t, ...base } = s;
-  const rest = item.refs ? { ...base, refs: item.refs, refTab: item.refTab ?? base.refTab } : base;
+  const withRefs = item.refs ? { ...base, refs: item.refs, refTab: item.refTab ?? base.refTab } : base;
+  const rest = item.duration !== null ? { ...withRefs, duration: item.duration } : withRefs;
   return item.blocks
     ? { ...rest, promptInput: "blocks", blocks: item.blocks, fullPrompt: "", clipName: item.name }
     : { ...rest, promptInput: "full", fullPrompt: item.text, clipName: item.name };

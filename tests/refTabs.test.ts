@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildWorkflow as buildH3 } from "@/lib/builders/h3";
 import { defaultH3Settings } from "@/lib/defaults";
 import { parseVideoBatch, settingsForItem } from "@/lib/h3batch";
 import { parseRefTabLine } from "@/lib/h3prompt";
@@ -128,5 +129,50 @@ describe("Upload ohne Pod", () => {
     expect(refCopyPath(offlineName("../../etc/passwd"))).not.toBeNull();
     expect(offlineName(".mp3")).toMatch(/^[\w-]+_[a-z0-9]+$/);
     expect(offlineName("###.png")).toMatch(/^ref_[a-z0-9]+\.png$/);
+  });
+});
+
+describe("Dauer pro Clip", () => {
+  it("erkennt die üblichen Schreibweisen", async () => {
+    const { parseDurationLine } = await import("@/lib/h3prompt");
+    for (const l of ["Dauer 8", "Dauer: 8 s", "dauer 8s", "Länge 8", "Duration: 8", "8s", "8 s", "8 Sekunden", "**Dauer 8**", "8 sek"]) expect(parseDurationLine(l), l).toBe(8);
+    for (const l of ["Clip 8", "8", "Ref-Tab 8", "summary: 8s", "Dauer", "the woman waits 8 seconds"]) expect(parseDurationLine(l), l).toBeNull();
+  });
+
+  it("nimmt die Dauer pro Clip, sonst die aus dem Formular – Reihenfolge der Kopfzeilen egal", () => {
+    const text = `Ref-Tab 2\nClip 1\nDauer 6\n${prompt("A")}\n---\nDauer 12\nRef-Tab 3\nClip 2\n${prompt("B")}\n---\nClip 3\n${prompt("C")}`;
+    const r = parseVideoBatch(text, REF);
+    expect(r.errors).toEqual([]);
+    expect(r.items.map((i) => [i.name, i.refTab, i.duration])).toEqual([
+      ["Clip 1", 2, 6],
+      ["Clip 2", 3, 12],
+      ["Clip 3", 1, null],
+    ]);
+    expect(r.items[0].blocks?.summary).toBe("A");
+  });
+
+  it("hängt Kopfzeilen ohne --- an den folgenden Clip", () => {
+    const r = parseVideoBatch(`Clip 1\n${prompt("A")}\n\nRef-Tab 2\nDauer 5\nClip 2\n${prompt("B")}`, REF);
+    expect(r.items.map((i) => [i.name, i.refTab, i.duration])).toEqual([
+      ["Clip 1", 1, null],
+      ["Clip 2", 2, 5],
+    ]);
+  });
+
+  it("meldet eine Dauer außerhalb von 2–15 s als Fehler", () => {
+    const r = parseVideoBatch(`Clip 1\nDauer 20\n${prompt("A")}`, REF);
+    expect(r.items).toHaveLength(0);
+    expect(r.errors[0].message).toContain("20");
+  });
+
+  it("speichert die Dauer im Job des Clips", () => {
+    const s = { ...defaultH3Settings(), duration: 10, promptInput: "batch" as const, batchText: `Clip 1\nDauer 4\n${prompt("A")}\n---\nClip 2\n${prompt("B")}` };
+    const { items } = parseVideoBatch(s.batchText, REF);
+    expect(settingsForItem(s, items[0]).duration).toBe(4);
+    expect(settingsForItem(s, items[1]).duration).toBe(10);
+    // im Workflow landet die Dauer im Director (Widget und builder_state)
+    const wf = buildH3({ settings: settingsForItem(s, items[0]), seed: 1 });
+    expect(wf["2730"].inputs.duration).toBe(4);
+    expect(JSON.parse(String(wf["2730"].inputs.builder_state)).duration).toBe(4);
   });
 });
