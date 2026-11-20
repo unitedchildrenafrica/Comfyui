@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { postJson } from "@/lib/server/comfy";
-import { onAllPods, onPromptPod } from "@/lib/server/podOps";
+import { onAllPods, onPodOrAll, onPromptPod } from "@/lib/server/podOps";
 import { getLiveState } from "@/lib/server/events";
 import { getHistory, getQueue } from "@/lib/server/history";
 import { badRequest, errorResponse } from "@/lib/server/http";
@@ -38,6 +38,7 @@ export async function GET() {
       // für die Wecker-Glocke: auch Videos aus der ComfyUI-Oberfläche erkennen
       kind: jobs[h.promptId]?.kind ?? (h.files.some((f) => f.kind === "video") ? "video" : "image"),
       status: h.status,
+      podId: h.podId ?? null,
       error: h.status === "error" ? (h.error ?? null) : null,
       durationMs: h.durationMs ?? getLiveState().durations[h.promptId] ?? null,
       timestamp: h.timestamp,
@@ -50,10 +51,10 @@ export async function GET() {
   }
 }
 
-/** { action: "delete", ids } | { action: "interrupt", promptId? } | { action: "clear" } */
+/** { action: "delete", ids } | { action: "interrupt", promptId? } | { action: "clear", pod? } – pod = nur dieser Pod */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { action: string; ids?: string[]; promptId?: string };
+    const body = (await req.json()) as { action: string; ids?: string[]; promptId?: string; pod?: string };
     if (body.action === "delete") {
       if (!Array.isArray(body.ids) || !body.ids.length) return badRequest("ids fehlen");
       // ComfyUI ignoriert unbekannte IDs → bei mehreren Pods einfach an alle
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
       if (id) await onPromptPod(id, () => postJson("/interrupt", { prompt_id: id }));
       else await onAllPods(() => postJson("/interrupt", {}));
     } else if (body.action === "clear") {
-      await onAllPods(async () => {
+      await onPodOrAll(body.pod, async () => {
         await postJson("/queue", { clear: true });
         await postJson("/interrupt", {});
       });

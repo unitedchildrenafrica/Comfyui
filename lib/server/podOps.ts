@@ -30,3 +30,13 @@ export async function onPromptPod<T>(promptId: string, fn: () => Promise<T>): Pr
   if (!id || !getPod(id)) return null;
   return withPod(id, fn);
 }
+
+/** Nur auf dem gewählten Pod (Warteschlange: Umschalter) oder, ohne Angabe, auf allen */
+export async function onPodOrAll(podId: string | null | undefined, fn: () => Promise<unknown>): Promise<void> {
+  if (serverMode() && podId) {
+    if (!getPod(podId)) throw new ComfyUnavailableError(undefined, "Dieser Pod ist nicht mehr angemeldet");
+    await withPod(podId, fn);
+    return;
+  }
+  await onAllPods(fn);
+}
