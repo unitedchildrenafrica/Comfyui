@@ -49,7 +49,7 @@ describe("Pod-Rollen", () => {
 });
 
 describe("Pod-Anmeldung", () => {
-  it("merkt sich mehrere Pods, übernimmt alte pod.json und räumt verwaiste Alt-Pods weg", async () => {
+  it("merkt sich mehrere Pods, übernimmt alte pod.json, Rollen bleiben bei spätem Lebenszeichen stabil", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const path = await import("node:path");
@@ -65,14 +65,24 @@ describe("Pod-Anmeldung", () => {
     const again = await pl.registerPod({ id: "neu", url: "https://neu2.example", kind: "bilder" });
     expect(again.changed).toBe(true);
     expect(pl.getPods()).toHaveLength(2);
-    // Alt-Pod hat ein Lebenszeichen verpasst → wird beim nächsten Pod mit Kennung entfernt
+    // Lebenszeichen des alten Pods kommt spät (60 s + Selbsttest) → er bleibt, Rollen bleiben stabil
     pl.getPod("legacy")!.lastSeen = Date.now() - 80_000;
+    const since = pl.getPod("legacy")!.registeredAt;
     await pl.registerPod({ id: "neu", url: "https://neu2.example", kind: "bilder" });
-    expect(pl.getPods().map((p) => p.id)).toEqual(["neu"]);
+    expect(pl.getPods().map((p) => p.id).sort()).toEqual(["legacy", "neu"]);
+    expect(pl.podRoles()).toEqual({ bild: "neu", video: "legacy" });
+    await pl.registerPod({ id: "legacy", url: "https://alt.example", kind: "alles" });
+    expect(pl.getPod("legacy")!.registeredAt).toBe(since);
+    expect(pl.podRoles()).toEqual({ bild: "neu", video: "legacy" });
+    // erst nach 3 Minuten ohne Lebenszeichen gilt er als getrennt → der andere macht beides
+    pl.getPod("legacy")!.lastSeen = Date.now() - 4 * 60_000;
+    expect(pl.podRoles()).toEqual({ bild: "neu", video: "neu" });
+    pl.getPod("legacy")!.lastSeen = Date.now();
     // Kontext: withRole wählt den Pod, comfyUrl folgt
     const { config } = await import("@/lib/server/config");
     process.env.SERVER_MODE = "1";
-    expect(pl.withRole("video", () => config.comfyUrl)).toBe("https://neu2.example");
+    expect(pl.withRole("video", () => config.comfyUrl)).toBe("https://alt.example");
+    expect(pl.withRole("bild", () => config.comfyUrl)).toBe("https://neu2.example");
     delete process.env.SERVER_MODE;
   });
 });

@@ -88,10 +88,10 @@ export async function registerPod(input: { id: string; url: string; gpu?: string
     registeredAt: prev?.registeredAt ?? now,
     lastSeen: now,
   };
+  // Pods werden hier nie wegen eines späten Lebenszeichens entfernt: Das kommt nur ungefähr jede
+  // Minute (60 s Pause + Selbsttest der Tunnel-Adresse). Ein Entfernen ließ die Rollen springen und
+  // schickte Jobs an den falschen Pod. Getrennt gilt ein Pod erst nach 3 Minuten (isOnline).
   r.pods = [...r.pods.filter((p) => p !== prev), pod];
-  // Ein alter Pod ohne Kennung („legacy“), der sein letztes Lebenszeichen (jede Minute) verpasst hat,
-  // ist meist derselbe Pod nach einem Neustart mit neuem Skript → nicht noch 3 Minuten Jobs dorthin
-  if (pod.id !== "legacy") r.pods = r.pods.filter((p) => !(p.id === "legacy" && now - p.lastSeen > 75_000));
   // Lange getrennte Pods aufräumen (nach einem Tag)
   r.pods = r.pods.filter((p) => p === pod || now - p.lastSeen < 24 * 3600_000);
   await persist();
