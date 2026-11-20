@@ -1,4 +1,4 @@
-import { getLiveState } from "@/lib/server/events";
+import { getLiveState, runFor } from "@/lib/server/events";
 import { getHistoryEntry } from "@/lib/server/history";
 import { errorResponse } from "@/lib/server/http";
 import { getJob } from "@/lib/server/store";
@@ -11,11 +11,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const [job, history] = await Promise.all([getJob(id), getHistoryEntry(id).catch(() => null)]);
     const live = getLiveState();
+    const run = runFor(id);
     return Response.json({
       job,
       history,
-      running: live.runningPromptId === id,
-      progress: live.runningPromptId === id ? live.progress : null,
+      running: !!run,
+      progress: run?.progress ?? null,
       error: live.errors[id] ?? (history?.error ? { message: history.error } : null),
     });
   } catch (err) {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createWriteStream } from "node:fs";
-import { comfyFetch } from "./comfy";
+import { fetchFromPods } from "./comfy";
 import { config } from "./config";
 import { serverMode } from "./podLink";
 import { resolveOutputFile } from "./zip";
@@ -48,7 +48,7 @@ export async function keepFavoriteFile(subfolder: string, filename: string): Pro
   }
   if (serverMode()) {
     try {
-      const res = await comfyFetch(`/view?${new URLSearchParams({ filename, subfolder, type: "output" })}`, { timeoutMs: 10 * 60_000 });
+      const res = await fetchFromPods(`/view?${new URLSearchParams({ filename, subfolder, type: "output" })}`, { timeoutMs: 10 * 60_000 });
       if (res.ok && res.body) {
         const part = `${dest}.part`;
         await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), createWriteStream(part));

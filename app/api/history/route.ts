@@ -40,8 +40,11 @@ export async function GET(req: NextRequest) {
       // Gespiegelte Dateien (auch von gelöschten/alten Pods) + Live-Einträge, die noch nicht kopiert sind
       const mirrored = await listMirrored();
       const deletedAt = await deletedMap();
-      const have = new Set(mirrored.map(key));
-      const live = rows.filter((r) => !have.has(key(r.file)) && !isDeleted(deletedAt, r.file, r.timestamp));
+      // Gleicher Job + gleiche Pod-Datei = schon gespiegelt. Nur nach Namen zu vergleichen würde neue
+      // Bilder eines neuen Pods verstecken (er zählt wieder ab 00001).
+      const podKey = (promptId: string, f: { subfolder: string; filename: string }) => `${promptId}|${key(f)}`;
+      const have = new Set(mirrored.map((m) => podKey(m.promptId, { subfolder: m.subfolder, filename: m.podFilename ?? m.filename })));
+      const live = rows.filter((r) => !have.has(podKey(r.promptId, r.file)) && !isDeleted(deletedAt, r.file, r.timestamp));
       rows = [
         ...mirrored.map((m) => ({ file: { filename: m.filename, subfolder: m.subfolder, type: m.type, kind: m.kind }, promptId: m.promptId, timestamp: m.timestamp, durationMs: m.durationMs })),
         ...live,

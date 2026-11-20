@@ -1,4 +1,6 @@
+import type { NextRequest } from "next/server";
 import { comfyJson } from "@/lib/server/comfy";
+import { serverMode, withPod } from "@/lib/server/podLink";
 import { getLiveState } from "@/lib/server/events";
 import { errorResponse } from "@/lib/server/http";
 
@@ -9,9 +11,12 @@ interface SystemStats {
   devices?: { name?: string; type?: string; vram_total?: number; vram_free?: number }[];
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const stats = await comfyJson<SystemStats>("/system_stats", { timeoutMs: 5000 });
+    // ?pod=… = diesen Pod prüfen (Server-Modus mit mehreren Pods)
+    const podId = req.nextUrl.searchParams.get("pod");
+    const load = () => comfyJson<SystemStats>("/system_stats", { timeoutMs: 5000 });
+    const stats = podId && serverMode() ? await withPod(podId, load) : await load();
     const gpu = stats.devices?.[0];
     return Response.json({
       ok: true,

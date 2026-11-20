@@ -427,13 +427,13 @@ export function VideoForm() {
 
       <Section title="Modelle">
         <Field label="DiT-Modell">
-          <Select value={s.ditModel} onChange={(v) => set({ ditModel: v })} options={o?.unets ?? []} />
+          <Select value={s.ditModel} onChange={(v) => set({ ditModel: v })} options={o?.h3.unets ?? o?.unets ?? []} />
         </Field>
         <Field label="Text-Encoder">
-          <Select value={s.textEncoder} onChange={(v) => set({ textEncoder: v })} options={o?.clips ?? []} />
+          <Select value={s.textEncoder} onChange={(v) => set({ textEncoder: v })} options={o?.h3.clips ?? o?.clips ?? []} />
         </Field>
         <Field label="LoRAs">
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="video" use={o?.loraUse} max={H3_MAX_LORAS} onReload={reload} />
+          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.h3.loras ?? o?.loras ?? []} target="video" use={o?.loraUse} max={H3_MAX_LORAS} onReload={reload} />
         </Field>
       </Section>
 

@@ -4,13 +4,13 @@ import { badRequest } from "@/lib/server/http";
 import { cancelDownload, listDownloads, startDownload } from "@/lib/server/downloads";
 import { setLoraOverrides } from "@/lib/server/loraKinds";
 import { saveModelLinks } from "@/lib/server/modelRegistry";
-import { forwardToPodApp } from "@/lib/server/podForward";
-import { serverMode } from "@/lib/server/podLink";
+import { downloadsOfAllPods, forwardToPodApp } from "@/lib/server/podForward";
+import { podFor, serverMode } from "@/lib/server/podLink";
 
 export const dynamic = "force-dynamic";
 
 export function GET(req: NextRequest) {
-  if (serverMode()) return forwardToPodApp(req, "/api/models/downloads");
+  if (serverMode()) return req.nextUrl.searchParams.get("pod") ? forwardToPodApp(req, "/api/models/downloads") : downloadsOfAllPods(req);
   return Response.json({ downloads: listDownloads() });
 }
 
@@ -28,7 +28,13 @@ export async function POST(req: NextRequest) {
     const uses = items.filter((i) => i.type === "lora" && (i.use === "image" || i.use === "video")).map((i) => ({ name: i.filename, use: i.use! }));
     if (uses.length) await setLoraOverrides(uses).catch(() => {});
   }
-  if (serverMode()) return forwardToPodApp(req, "/api/models/downloads", raw);
+  if (serverMode()) {
+    // Ziel-Pod: ?pod=… von der Seite, sonst automatisch – Video-LoRAs auf den Video-Pod, alles andere
+    // auf den Bild-Pod (bei nur einem Pod ist es derselbe)
+    const chosen = req.nextUrl.searchParams.get("pod");
+    const videoOnly = !!items?.length && items.every((i) => i.use === "video");
+    return forwardToPodApp(req, "/api/models/downloads", raw, chosen ?? podFor(videoOnly ? "video" : "bild")?.id);
+  }
   if (!items?.length) return badRequest("Keine Dateien gewählt");
   const errors: string[] = [];
   for (const item of items) {

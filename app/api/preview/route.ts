@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 
 /** Letzte Live-Vorschau. Mit Range-Unterstützung – iOS Safari spielt <video> sonst nicht ab. */
 export function GET(req: Request) {
-  const p = getPreview();
+  // ?pod=… = Vorschau dieses Pods (bei zwei Pods laufen zwei Jobs gleichzeitig)
+  const p = getPreview(new URL(req.url).searchParams.get("pod"));
   if (!p) return new Response(null, { status: 204 });
   const total = p.data.length;
   const headers: Record<string, string> = { "content-type": p.mime, "cache-control": "no-store", "accept-ranges": "bytes" };

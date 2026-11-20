@@ -5,7 +5,7 @@ import { BellToggle } from "@/components/Alarm";
 import { LiveProgress } from "@/components/LiveProgress";
 import { LivePreview } from "@/components/LivePreview";
 import { ComfyDown, ErrorBox } from "@/components/ui";
-import { useLive } from "@/hooks/useLive";
+import { liveFor, useLive } from "@/hooks/useLive";
 import { api, ApiError } from "@/lib/client";
 import { formatDuration } from "@/lib/format";
 
@@ -82,7 +82,7 @@ export default function QueuePage() {
         <h2 className="font-semibold">Läuft</h2>
         {running.length === 0 && <p className="text-sm text-muted">Nichts in Arbeit.</p>}
         {running.map((r) => {
-          const live = state?.runningPromptId === r.promptId ? state : null;
+          const live = liveFor(state, [r.promptId]);
           return (
             <div key={r.promptId} className="space-y-2">
               <div className="flex items-center justify-between gap-2">

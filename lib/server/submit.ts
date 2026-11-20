@@ -11,6 +11,10 @@ import { getClientId, registerPromptNodes } from "./events";
 import { ensureRefsOnPod } from "./refs";
 import { refLimitError } from "../h3refs";
 import { getAppSettings, saveBatch, saveJob } from "./store";
+import { currentPod, serverMode, withRole } from "./podLink";
+
+/** Pod, auf dem gerade eingereiht wird (Server-Modus) */
+const podHere = () => (serverMode() ? currentPod()?.id : undefined);
 
 export class BatchParseError extends Error {
   constructor(public errors: BatchError[]) {
@@ -44,7 +48,12 @@ export interface SubmitResult {
  * Stellt ALLE Blöcke sofort serverseitig in die ComfyUI-Queue. Dadurch läuft der
  * Batch weiter, auch wenn das Handy gesperrt oder der Tab zu ist.
  */
-export async function submitImageJobs(input: ImageSettings): Promise<SubmitResult> {
+export function submitImageJobs(input: ImageSettings): Promise<SubmitResult> {
+  // Bilder auf den Bild-Pod (bei nur einem Pod: der eine)
+  return withRole("bild", () => submitImageJobsHere(input));
+}
+
+async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> {
   const app = await getAppSettings();
   const settings = { ...input, folder: input.folder.trim() || app.folders[input.generator] };
   const items = promptItems(settings, app.defaultNegative);
@@ -75,6 +84,7 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
       result.seeds.push(seed);
       const job: JobRecord = {
         promptId,
+        podId: podHere(),
         kind: "image",
         generator: settings.generator,
         settings,
@@ -109,7 +119,12 @@ export async function submitImageJobs(input: ImageSettings): Promise<SubmitResul
   return result;
 }
 
-export async function submitVideoJob(input: H3Settings) {
+export function submitVideoJob(input: H3Settings) {
+  // Videos auf den Video-Pod (bei nur einem Pod: der eine)
+  return withRole("video", () => submitVideoJobHere(input));
+}
+
+async function submitVideoJobHere(input: H3Settings) {
   // Alle Tabs werden nur zum Abschicken mitgeschickt – im Job nur die tatsächlich benutzten Refs
   const { refTabs: _t, refExtra: _e, ...settings } = input;
   await ensureRefsOnPod(settings.refs ?? []);
@@ -120,6 +135,7 @@ export async function submitVideoJob(input: H3Settings) {
   const text = h3PromptText(settings);
   await saveJob({
     promptId,
+    podId: podHere(),
     kind: "video",
     generator: "h3",
     settings,
@@ -135,7 +151,11 @@ export async function submitVideoJob(input: H3Settings) {
  * auch wenn das Handy gesperrt ist. Alle Clips teilen die Einstellungen; die Referenzen kommen aus
  * dem Ref-Tab des Clips („Ref-Tab 3“ über „Clip 35“), sonst aus dem gewählten Tab.
  */
-export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResult> {
+export function submitVideoBatch(settings: H3Settings): Promise<SubmitResult> {
+  return withRole("video", () => submitVideoBatchHere(settings));
+}
+
+async function submitVideoBatchHere(settings: H3Settings): Promise<SubmitResult> {
   const { items, errors } = parseVideoBatch(settings.batchText ?? "", {
     mode: settings.mode,
     noDialogue: settings.noDialogue,
@@ -165,6 +185,7 @@ export async function submitVideoBatch(settings: H3Settings): Promise<SubmitResu
       result.seeds.push(seed);
       await saveJob({
         promptId,
+        podId: podHere(),
         kind: "video",
         generator: "h3",
         settings: itemSettings,

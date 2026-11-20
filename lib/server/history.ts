@@ -1,4 +1,5 @@
-import { comfyJson } from "./comfy";
+import { ComfyUnavailableError, comfyJson } from "./comfy";
+import { forEachPod, getPod, promptPodId, rememberPromptPod, serverMode, withPod } from "./podLink";
 
 export interface MediaFile {
   filename: string;
@@ -16,6 +17,8 @@ export interface HistoryEntry {
   error?: string;
   /** Laufzeit von execution_start bis Ende (ms), falls ComfyUI Zeitstempel liefert */
   durationMs: number | null;
+  /** Server-Modus: Pod, auf dem der Job lief */
+  podId?: string;
 }
 
 type RawHistory = Record<
@@ -76,24 +79,86 @@ export function parseHistory(raw: RawHistory): HistoryEntry[] {
   });
 }
 
-export async function getHistory(maxItems = 300): Promise<HistoryEntry[]> {
+/** Verlauf nur des Pods im aktuellen Kontext (bzw. des einzigen ComfyUI) */
+export async function podHistory(maxItems = 300): Promise<HistoryEntry[]> {
   const raw = await comfyJson<RawHistory>(`/history?max_items=${maxItems}`, { timeoutMs: 30_000 });
   return parseHistory(raw).sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export async function getHistoryEntry(promptId: string): Promise<HistoryEntry | null> {
+/**
+ * Server-Modus: auf allen verbundenen Pods ausführen und zusammenführen. Fällt ein Pod aus, kommen
+ * die anderen trotzdem; nur wenn keiner antwortet, gibt es einen Fehler.
+ */
+async function fromAllPods<T>(fn: (podId: string) => Promise<T[]>): Promise<T[]> {
+  const results = await forEachPod((pod) => fn(pod.id));
+  if (!results.length) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
+  const ok = results.filter((r) => r.error === undefined);
+  if (!ok.length) throw results[0].error;
+  return ok.flatMap((r) => r.value ?? []);
+}
+
+export async function getHistory(maxItems = 300): Promise<HistoryEntry[]> {
+  if (!serverMode()) return podHistory(maxItems);
+  const all = await fromAllPods(async (podId) => {
+    const list = await podHistory(maxItems);
+    for (const e of list) {
+      e.podId = podId;
+      rememberPromptPod(e.promptId, podId);
+    }
+    return list;
+  });
+  return all.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+async function entryHere(promptId: string): Promise<HistoryEntry | null> {
   const raw = await comfyJson<RawHistory>(`/history/${encodeURIComponent(promptId)}`);
   return parseHistory(raw)[0] ?? null;
 }
 
+export async function getHistoryEntry(promptId: string): Promise<HistoryEntry | null> {
+  if (!serverMode()) return entryHere(promptId);
+  // Pod des Jobs zuerst fragen, sonst alle
+  const known = getPod(promptPodId(promptId));
+  if (known) {
+    const e = await withPod(known.id, () => entryHere(promptId)).catch(() => null);
+    if (e) return { ...e, podId: known.id };
+  }
+  const found = await fromAllPods(async (podId) => {
+    const e = await entryHere(promptId);
+    return e ? [{ ...e, podId }] : [];
+  });
+  if (found[0]) rememberPromptPod(promptId, found[0].podId);
+  return found[0] ?? null;
+}
+
+export interface QueueItem {
+  number: number;
+  promptId: string;
+  /** Server-Modus: Pod, in dessen Warteschlange der Job steht */
+  podId?: string;
+}
+
 export interface QueueSnapshot {
-  running: { number: number; promptId: string }[];
-  pending: { number: number; promptId: string }[];
+  running: QueueItem[];
+  pending: QueueItem[];
+}
+
+async function queueHere(podId?: string): Promise<QueueSnapshot> {
+  const q = await comfyJson<{ queue_running: unknown[][]; queue_pending: unknown[][] }>("/queue");
+  const map = (list: unknown[][]) =>
+    list.map((e) => ({ number: Number(e[0]), promptId: String(e[1]), ...(podId ? { podId } : {}) })).sort((a, b) => a.number - b.number);
+  return { running: map(q.queue_running ?? []), pending: map(q.queue_pending ?? []) };
 }
 
 export async function getQueue(): Promise<QueueSnapshot> {
-  const q = await comfyJson<{ queue_running: unknown[][]; queue_pending: unknown[][] }>("/queue");
-  const map = (list: unknown[][]) =>
-    list.map((e) => ({ number: Number(e[0]), promptId: String(e[1]) })).sort((a, b) => a.number - b.number);
-  return { running: map(q.queue_running ?? []), pending: map(q.queue_pending ?? []) };
+  if (!serverMode()) return queueHere();
+  const parts = await fromAllPods(async (podId) => {
+    const q = await queueHere(podId);
+    for (const e of [...q.running, ...q.pending]) rememberPromptPod(e.promptId, podId);
+    return [q];
+  });
+  return {
+    running: parts.flatMap((p) => p.running),
+    pending: parts.flatMap((p) => p.pending),
+  };
 }

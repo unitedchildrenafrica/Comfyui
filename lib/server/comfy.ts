@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { getPodLink, podSecret, serverMode } from "./podLink";
+import { currentPod, getOnlinePods, podSecret, rememberPromptPod, serverMode, withPod } from "./podLink";
 
 export class ComfyUnavailableError extends Error {
   constructor(cause?: unknown, message = "ComfyUI antwortet nicht") {
@@ -24,7 +24,7 @@ export class ComfyPromptError extends Error {
 
 export async function comfyFetch(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = 15_000, ...rest } = init;
-  if (serverMode() && !getPodLink()) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
+  if (serverMode() && !currentPod()) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
   const headers = new Headers(rest.headers);
   for (const [k, v] of Object.entries(podHeaders())) headers.set(k, v);
   let res: Response;
@@ -79,6 +79,8 @@ export async function queuePrompt(prompt: unknown, clientId: string): Promise<st
     const msg = typeof data.error === "string" ? data.error : data.error?.message || `HTTP ${res.status}`;
     throw new ComfyPromptError(msg, { error: data.error, node_errors: data.node_errors });
   }
+  // merken, auf welchem Pod der Job liegt (Abbrechen, Vorschau, Galerie)
+  if (serverMode()) rememberPromptPod(data.prompt_id, currentPod()?.id);
   return data.prompt_id;
 }
 
@@ -88,7 +90,9 @@ type ObjectInfo = Record<string, { input?: { required?: Record<string, unknown[]
 const infoCache = new Map<string, { at: number; data: ObjectInfo[string] | null }>();
 
 export async function getNodeInfo(cls: string, maxAgeMs = 30_000) {
-  const hit = infoCache.get(cls);
+  // pro Pod getrennt – Bild- und Video-Pod haben verschiedene Modelle und Nodes
+  const key = `${config.comfyUrl}|${cls}`;
+  const hit = infoCache.get(key);
   if (hit && Date.now() - hit.at < maxAgeMs) return hit.data;
   const res = await comfyFetch(`/object_info/${encodeURIComponent(cls)}`);
   if (!res.ok) {
@@ -98,7 +102,7 @@ export async function getNodeInfo(cls: string, maxAgeMs = 30_000) {
   }
   const json = (await res.json()) as ObjectInfo;
   const data = json[cls] ?? null;
-  infoCache.set(cls, { at: Date.now(), data });
+  infoCache.set(key, { at: Date.now(), data });
   return data;
 }
 
@@ -124,4 +128,29 @@ export async function nodeExists(cls: string) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Server-Modus mit mehreren Pods: eine Datei (z. B. /view) auf dem Pod holen, der sie hat.
+ * Bevorzugte Pods zuerst (Pod des Jobs), dann die übrigen verbundenen. Ohne Server-Modus: normal.
+ */
+export async function fetchFromPods(path: string, init: RequestInit & { timeoutMs?: number } = {}, prefer: (string | null | undefined)[] = []): Promise<Response> {
+  if (!serverMode()) return comfyFetch(path, init);
+  const online = getOnlinePods().map((p) => p.id);
+  const order = [...new Set([...prefer.filter((x): x is string => !!x && online.includes(x)), ...online])];
+  if (!order.length) throw new ComfyUnavailableError(undefined, "Kein Pod verbunden");
+  let last: Response | null = null;
+  let lastErr: unknown = null;
+  for (const id of order) {
+    try {
+      const res = await withPod(id, () => comfyFetch(path, init));
+      if (res.ok || res.status === 206) return res;
+      await last?.body?.cancel().catch(() => {});
+      last = res;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (last) return last;
+  throw lastErr;
 }

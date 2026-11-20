@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ComfyDown, ErrorBox, Field } from "@/components/ui";
 import { api, ApiError } from "@/lib/client";
 import type { ImageGenerator } from "@/lib/types";
+import { PodCards, type PodsResponse } from "./PodCards";
 
 interface Status {
   comfyVersion: string;
@@ -30,12 +31,7 @@ export default function SettingsPage() {
   const [app, setApp] = useState<AppSettings | null>(null);
   const [presets, setPresets] = useState<Record<string, { generator: string }>>({});
   const [saved, setSaved] = useState(false);
-  const [pod, setPod] = useState<{
-    serverMode: boolean;
-    online: boolean;
-    link: { url: string; gpu?: string; registeredAt: number; lastSeen: number } | null;
-    live?: { connected: boolean; error: string | null };
-  } | null>(null);
+  const [pod, setPod] = useState<PodsResponse | null>(null);
 
   const check = useCallback(async () => {
     setStatusErr(null);
@@ -51,7 +47,7 @@ export default function SettingsPage() {
     check();
     api<AppSettings>("/api/app-settings").then(setApp).catch(() => {});
     api<typeof presets>("/api/presets").then(setPresets).catch(() => {});
-    api<typeof pod>("/api/pod").then(setPod).catch(() => {});
+    api<PodsResponse>("/api/pod").then(setPod).catch(() => {});
   }, [check]);
 
   const save = async () => {
@@ -75,7 +71,7 @@ export default function SettingsPage() {
     <main className="page">
       <h1 className="px-1 text-lg font-semibold">Einstellungen</h1>
 
-      {statusErr?.comfyDown ? (
+      {pod?.serverMode ? null : statusErr?.comfyDown ? (
         <ComfyDown onRetry={check} />
       ) : statusErr ? (
         <ErrorBox>{statusErr.message}</ErrorBox>
@@ -112,29 +108,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {pod?.serverMode && (
-        <section className="card space-y-1 p-4 text-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Server-Modus</h2>
-            <span className={pod.online ? "text-emerald-400" : "text-amber-300"}>{pod.online ? "● Pod verbunden" : "○ kein Pod"}</span>
-          </div>
-          {pod.link ? (
-            <p className="text-muted">
-              {pod.link.gpu ?? "GPU-Pod"} · angemeldet {new Date(pod.link.registeredAt).toLocaleString("de-DE")} · zuletzt gemeldet{" "}
-              {new Date(pod.link.lastSeen).toLocaleTimeString("de-DE")}
-            </p>
-          ) : (
-            <p className="text-muted">Noch kein Pod angemeldet. Starte einen Pod mit VPS_URL und POD_SECRET im Template.</p>
-          )}
-          {pod.online && pod.live && (
-            <p className={pod.live.connected ? "text-emerald-400" : "text-amber-300"}>
-              Live-Verbindung (Fortschritt + Vorschau): {pod.live.connected ? "verbunden" : "getrennt"}
-              {!pod.live.connected && pod.live.error ? <span className="block text-xs text-muted">{pod.live.error}</span> : null}
-            </p>
-          )}
-          <p className="text-xs text-muted">Bilder und Videos werden automatisch auf diesen Server kopiert und bleiben auch ohne Pod in der Galerie.</p>
-        </section>
-      )}
+      {pod?.serverMode && <PodCards data={pod} onChange={setPod} />}
 
       <Link href="/modelle" className="btn btn-primary w-full">
         + Checkpoint / LoRA per Link laden

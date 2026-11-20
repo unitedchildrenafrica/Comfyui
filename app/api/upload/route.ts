@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { ComfyUnavailableError, comfyFetch } from "@/lib/server/comfy";
 import { badRequest, errorResponse } from "@/lib/server/http";
-import { serverMode } from "@/lib/server/podLink";
+import { serverMode, withRole } from "@/lib/server/podLink";
 import { offlineName, refCopyPath, saveRefCopy } from "@/lib/server/refs";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
     out.append("overwrite", "false");
     let res: Response;
     try {
-      res = await comfyFetch("/upload/image", { method: "POST", body: out, timeoutMs: 120_000 });
+      // Referenzen sind für H3 → auf den Video-Pod
+      res = await withRole("video", () => comfyFetch("/upload/image", { method: "POST", body: out, timeoutMs: 120_000 }));
     } catch (err) {
       // Server-Modus und Pod gerade weg: nur auf dem Server ablegen. Vor dem nächsten Video wird
       // die Datei automatisch auf den Pod geladen (ensureRefsOnPod) – Ref-Tabs lassen sich so

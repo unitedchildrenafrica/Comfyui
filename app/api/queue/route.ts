@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { postJson } from "@/lib/server/comfy";
+import { onAllPods, onPromptPod } from "@/lib/server/podOps";
 import { getLiveState } from "@/lib/server/events";
 import { getHistory, getQueue } from "@/lib/server/history";
 import { badRequest, errorResponse } from "@/lib/server/http";
@@ -55,12 +56,19 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as { action: string; ids?: string[]; promptId?: string };
     if (body.action === "delete") {
       if (!Array.isArray(body.ids) || !body.ids.length) return badRequest("ids fehlen");
-      await postJson("/queue", { delete: body.ids });
+      // ComfyUI ignoriert unbekannte IDs → bei mehreren Pods einfach an alle
+      const ids = body.ids;
+      await onAllPods(() => postJson("/queue", { delete: ids }));
     } else if (body.action === "interrupt") {
-      await postJson("/interrupt", body.promptId ? { prompt_id: body.promptId } : {});
+      const id = body.promptId;
+      // Nur den Pod unterbrechen, auf dem der Job läuft – sonst träfe es den Job des anderen Pods
+      if (id) await onPromptPod(id, () => postJson("/interrupt", { prompt_id: id }));
+      else await onAllPods(() => postJson("/interrupt", {}));
     } else if (body.action === "clear") {
-      await postJson("/queue", { clear: true });
-      await postJson("/interrupt", {});
+      await onAllPods(async () => {
+        await postJson("/queue", { clear: true });
+        await postJson("/interrupt", {});
+      });
     } else return badRequest("Unbekannte Aktion");
     return Response.json({ ok: true });
   } catch (err) {

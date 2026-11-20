@@ -180,7 +180,9 @@ Beim ersten Mal fragt das Skript nach GitHub-Token, App-Passwort und dem bisheri
 - einen Tunnel mit Zufalls-Adresse
 - ein **Lebenszeichen** an den Server, jede Minute
 
-In der App zeigt **Setup → Server-Modus**, ob ein Pod verbunden ist. Optional geht statt der Zufalls-Adresse ein fester zweiter Tunnel: `CF_GPU_TUNNEL_TOKEN` + `GPU_PUBLIC_URL`.
+**Zwei Pods gleichzeitig (Bilder + Videos):** Im Server-Modus können mehrere Pods angemeldet sein. Ein Pod mit `setup.sh bilder` macht automatisch die Bilder, der andere (`alles` oder `video`) die Videos – beides läuft parallel. Warteschlange und Galerie zeigen beide Pods, „Modelle laden“ fragt, auf welchen Pod. Unter **Setup → Pods** lässt sich die Rolle auch von Hand festlegen („Nur Bilder“ / „Nur Videos“). Läuft nur ein Pod, macht er beides wie bisher. Zählt ein neuer Pod Dateinamen wieder ab `00001`, bekommt die Kopie auf dem Server einen eindeutigen Namen – nichts wird überschrieben oder versteckt.
+
+In der App zeigt **Setup → Pods**, welche Pods verbunden sind. Optional geht statt der Zufalls-Adresse ein fester zweiter Tunnel: `CF_GPU_TUNNEL_TOKEN` + `GPU_PUBLIC_URL`.
 
 Logs auf dem Server: `journalctl -u pod-frontend -f`. Auf dem Pod: `/workspace/logs/gateway.log`, `heartbeat.log`.
 

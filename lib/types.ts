@@ -128,6 +128,8 @@ export interface H3Settings {
 
 export interface JobRecord {
   promptId: string;
+  /** Server-Modus: Pod, auf dem der Job eingereiht wurde */
+  podId?: string;
   kind: "image" | "video";
   generator: ImageGenerator | "h3";
   settings: ImageSettings | H3Settings;

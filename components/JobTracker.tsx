@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, viewUrl } from "@/lib/client";
-import { useLive } from "@/hooks/useLive";
+import { liveFor, useLive } from "@/hooks/useLive";
 import { formatDuration } from "@/lib/format";
 import { LivePreview } from "./LivePreview";
 import { LiveProgress } from "./LiveProgress";
@@ -72,7 +72,8 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
 
   const done = Object.keys(results).length;
   const failed = Object.values(results).filter((r) => r.error || r.history?.status === "error").length;
-  const runningHere = state?.runningPromptId && ids.includes(state.runningPromptId);
+  const here = liveFor(state, ids);
+  const runningHere = !!here;
   const allDone = done >= ids.length || cancelled;
   const files = ids.flatMap((id) => (results[id]?.history?.files ?? []).map((f) => ({ ...f, promptId: id })));
   const durations = Object.values(results)
@@ -108,8 +109,8 @@ export function JobTracker({ submitted, onUseSeed, onAgain }: { submitted: Submi
         )}
       </div>
       {ids.length > 1 && <ProgressBar value={done} max={ids.length} />}
-      {runningHere && state && <LiveProgress live={state} />}
-      {runningHere && state && <LivePreview live={state} className="max-h-80" />}
+      {here && <LiveProgress live={here} />}
+      {here && <LivePreview live={here} className="max-h-80" />}
       {cancelled && <p className="text-sm text-muted">Abgebrochen – wartende Jobs wurden gelöscht.</p>}
       {Object.entries(results)
         .filter(([, r]) => r.error)

@@ -20,6 +20,9 @@ export async function GET(req: Request) {
       const snapshot = () => {
         const s = getLiveState();
         return {
+          // alle laufenden Jobs (bei zwei Pods: Bild und Video gleichzeitig); die Felder darunter = der erste
+          runs: s.runs,
+          podId: s.runs[0]?.podId ?? null,
           connected: s.connected,
           runningPromptId: s.runningPromptId,
           node: s.node,

@@ -2,7 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 
+/** Was gerade auf einem Pod läuft (bei zwei Pods gibt es zwei davon) */
+export interface RunSnapshot {
+  podId: string;
+  runningPromptId: string | null;
+  node: string | null;
+  progress: { value: number; max: number } | null;
+  previewSeq: number;
+  previewMime: string | null;
+  previewStep: number | null;
+  startedAt: number | null;
+  nodeLabel: string | null;
+  nodeClass: string | null;
+  nodesDone: number;
+  nodesTotal: number;
+}
+
 export interface LiveSnapshot {
+  /** alle laufenden Jobs; die Felder unten beschreiben den ersten davon */
+  runs?: RunSnapshot[];
+  /** Pod des Laufs in diesem Objekt (für die Vorschau-URL) */
+  podId?: string | null;
   connected: boolean;
   runningPromptId: string | null;
   node: string | null;
@@ -73,4 +93,12 @@ export function useLive(onFinished?: (e: FinishedEvent) => void, enabled = true)
   }, [enabled]);
 
   return { state, sseOk };
+}
+
+/** Live-Zustand für einen bestimmten Job (bzw. Batch) – egal auf welchem Pod er läuft. */
+export function liveFor(state: LiveSnapshot | null, promptIds: string[]): LiveSnapshot | null {
+  if (!state) return null;
+  const run = state.runs?.find((r) => r.runningPromptId && promptIds.includes(r.runningPromptId));
+  if (run) return { ...state, ...run };
+  return state.runningPromptId && promptIds.includes(state.runningPromptId) ? state : null;
 }

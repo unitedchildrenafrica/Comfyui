@@ -11,6 +11,7 @@ import { findAvailable } from "@/lib/notes";
 import type { Options } from "@/lib/server/options";
 import { MODEL_TYPES, type ModelType } from "@/lib/modelLinks";
 import type { DownloadJob, Resolved, ResolvedFile } from "@/lib/server/downloads";
+import { type PodsResponse, podName } from "../einstellungen/PodCards";
 
 const TYPE_OPTIONS = Object.entries(MODEL_TYPES).map(([value, t]) => ({ value, label: `${t.label} → ${t.folder}` }));
 
@@ -222,8 +223,16 @@ export default function ModelsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startErrors, setStartErrors] = useState<string[]>([]);
-  const [downloads, setDownloads] = useState<DownloadJob[]>([]);
+  const [downloads, setDownloads] = useState<(DownloadJob & { pod?: string })[]>([]);
   const { options, reload: reloadOptions } = useOptions();
+  // Server-Modus mit mehreren Pods: wohin laden? "" = automatisch, "both" = auf alle
+  const [pods, setPods] = useState<PodsResponse | null>(null);
+  const [target, setTarget] = useState("");
+  useEffect(() => {
+    api<PodsResponse>("/api/pod").then(setPods, () => {});
+  }, []);
+  const onlinePods = pods?.serverMode ? pods.pods.filter((p) => p.online) : [];
+  const multi = onlinePods.length > 1;
 
   const loadDownloads = useCallback(async () => {
     try {
@@ -274,13 +283,21 @@ export default function ModelsPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ downloads: DownloadJob[]; errors: string[] }>("/api/models/downloads", {
-        method: "POST",
-        json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes, title: resolved?.title, use: c.type === "lora" ? c.use : undefined })) },
-      });
-      setDownloads(res.downloads);
-      setStartErrors(res.errors);
-      if (!res.errors.length) {
+      // automatisch: Video-Modell (Basis H3/MiniMax bzw. Video-LoRA) → Video-Pod, sonst Bild-Pod
+      const videoish = items.every((c) => (c.type === "lora" ? c.use === "video" : guessUseFromBaseModel(resolved?.baseModel, c.filename) === "video"));
+      const auto = pods?.roles[videoish ? "video" : "bild"] ?? null;
+      const targets = !multi ? [null] : target === "both" ? onlinePods.map((p) => p.id) : [target || auto];
+      const errors: string[] = [];
+      for (const pod of targets) {
+        const res = await api<{ downloads: DownloadJob[]; errors: string[] }>(`/api/models/downloads${pod ? `?pod=${encodeURIComponent(pod)}` : ""}`, {
+          method: "POST",
+          json: { items: items.map((c) => ({ url: c.url, type: c.type, filename: c.filename, sizeBytes: c.sizeBytes, title: resolved?.title, use: c.type === "lora" ? c.use : undefined })) },
+        });
+        errors.push(...res.errors);
+      }
+      await loadDownloads();
+      setStartErrors(errors);
+      if (!errors.length) {
         setResolved(null);
         setUrl("");
       }
@@ -291,7 +308,10 @@ export default function ModelsPage() {
     }
   };
 
-  const remove = async (id: string) => setDownloads((await api<{ downloads: DownloadJob[] }>(`/api/models/downloads?id=${id}`, { method: "DELETE" })).downloads);
+  const remove = async (id: string, pod?: string) => {
+    await api(`/api/models/downloads?id=${id}${pod ? `&pod=${encodeURIComponent(pod)}` : ""}`, { method: "DELETE" });
+    await loadDownloads();
+  };
   const patch = (i: number, p: Partial<Choice>) => setChoices((c) => c.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const total = choices.filter((c) => c.selected).reduce((s, c) => s + (c.sizeBytes ?? 0), 0);
 
@@ -376,6 +396,19 @@ export default function ModelsPage() {
               </ul>
             </ErrorBox>
           )}
+          {multi && (
+            <Field label="Laden auf" hint="Automatisch: Video-Modelle und Video-LoRAs auf den Video-Pod, alles andere auf den Bild-Pod.">
+              <Select
+                value={target}
+                onChange={setTarget}
+                options={[
+                  { value: "", label: "Automatisch" },
+                  ...onlinePods.map((p) => ({ value: p.id, label: `${podName(p)}${p.roles.length ? ` (${p.roles.map((r) => (r === "bild" ? "Bilder" : "Videos")).join(" + ")})` : ""}` })),
+                  { value: "both", label: "Auf beide Pods" },
+                ]}
+              />
+            </Field>
+          )}
           <button type="button" className="btn btn-primary w-full" disabled={busy || !choices.some((c) => c.selected)} onClick={start}>
             Herunterladen{total ? ` (${gb(total)})` : ""}
           </button>
@@ -394,8 +427,9 @@ export default function ModelsPage() {
             <div className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0 truncate">
                 {d.filename} <span className="text-xs text-muted">{d.folder}</span>
+                {multi && d.pod && <span className="block text-xs text-muted">auf {podName(onlinePods.find((p) => p.id === d.pod) ?? { id: d.pod, gpu: null })}</span>}
               </span>
-              <button type="button" className="btn btn-ghost px-3 text-sm" onClick={() => remove(d.id)} aria-label={d.status === "running" ? "Abbrechen" : "Entfernen"}>
+              <button type="button" className="btn btn-ghost px-3 text-sm" onClick={() => remove(d.id, d.pod)} aria-label={d.status === "running" ? "Abbrechen" : "Entfernen"}>
                 {d.status === "running" ? "Stopp" : "✕"}
               </button>
             </div>

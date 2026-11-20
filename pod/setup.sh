@@ -69,7 +69,8 @@ if [ "${SKIP_FRONTEND:-0}" != 1 ]; then
   # Tunnel nicht erst nach ComfyUI starten – ComfyUI kommt hier erst ganz am Ende hoch
   if [ -f "$START" ]; then
     # setsid: eigene Sitzung – überlebt das Schließen des Terminals
-    COMFY_URL="http://127.0.0.1:$PORT" WAIT_FOR_COMFY=0 PF_DETACHED=1 setsid nohup bash "$START" > "$LOG_DIR/start-frontend.log" 2>&1 < /dev/null &
+    # POD_KIND: der Server verteilt bei zwei Pods Bilder an den „bilder“-Pod, Videos an den anderen
+    POD_KIND="$MODE" COMFY_URL="http://127.0.0.1:$PORT" WAIT_FOR_COMFY=0 PF_DETACHED=1 setsid nohup bash "$START" > "$LOG_DIR/start-frontend.log" 2>&1 < /dev/null &
   fi
 fi
 

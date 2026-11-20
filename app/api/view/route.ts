@@ -1,12 +1,13 @@
 import { promises as fs } from "node:fs";
 import type { NextRequest } from "next/server";
-import { comfyFetch } from "@/lib/server/comfy";
+import { fetchFromPods } from "@/lib/server/comfy";
 import { errorResponse } from "@/lib/server/http";
 import { serveFile, thumbnail } from "@/lib/server/localFile";
-import { serverMode } from "@/lib/server/podLink";
+import { podFor, promptPodId, serverMode } from "@/lib/server/podLink";
 import { refCopyPath } from "@/lib/server/refs";
 import { favStorePath } from "@/lib/server/favStore";
 import { resolveOutputFile } from "@/lib/server/zip";
+import { mirroredOwner } from "@/lib/server/mirror";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,10 @@ export async function GET(req: NextRequest) {
     if (serverMode() && qs.get("type") === "output") {
       const abs = resolveOutputFile(qs.get("subfolder")!, qs.get("filename")!);
       const exists = abs ? await fs.stat(abs).then((s) => s.isFile(), () => false) : false;
-      if (abs && exists) {
+      // Gleicher Name, aber anderer Job (neuer Pod zählt wieder ab 00001) → nicht die alte Kopie zeigen
+      const wanted = p.get("v");
+      const owner = exists && wanted ? await mirroredOwner({ subfolder: qs.get("subfolder")!, filename: qs.get("filename")! }) : null;
+      if (abs && exists && !(owner && wanted && owner !== wanted)) {
         const disposition: Record<string, string> = p.get("download")
           ? { "content-disposition": `attachment; filename="${qs.get("filename")!.replace(/"/g, "")}"` }
           : {};
@@ -59,7 +63,9 @@ export async function GET(req: NextRequest) {
     const headers: Record<string, string> = {};
     const range = req.headers.get("range");
     if (range) headers.range = range;
-    const res = await comfyFetch(`/view?${qs}`, { headers, timeoutMs: 120_000 });
+    // Pod des Jobs zuerst (bei mehreren Pods), Referenzen liegen auf dem Video-Pod
+    const prefer = [p.get("v") ? promptPodId(p.get("v")!) : null, qs.get("type") === "input" ? podFor("video")?.id : null];
+    const res = await fetchFromPods(`/view?${qs}`, { headers, timeoutMs: 120_000 }, prefer);
     const out = new Headers();
     for (const h of ["content-type", "content-length", "content-range", "accept-ranges", "last-modified"]) {
       const v = res.headers.get(h);

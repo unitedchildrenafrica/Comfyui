@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { postJson } from "@/lib/server/comfy";
+import { onAllPods, onPromptPod } from "@/lib/server/podOps";
 import { getLiveState } from "@/lib/server/events";
 import { getHistory, getQueue } from "@/lib/server/history";
 import { errorResponse } from "@/lib/server/http";
@@ -36,8 +37,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const s = await status((await params).id);
     if (!s) return Response.json({ error: "Batch nicht gefunden" }, { status: 404 });
-    if (s.pending.length) await postJson("/queue", { delete: s.pending });
-    for (const pid of s.running) await postJson("/interrupt", { prompt_id: pid });
+    const pending = s.pending;
+    if (pending.length) await onAllPods(() => postJson("/queue", { delete: pending }));
+    for (const pid of s.running) await onPromptPod(pid, () => postJson("/interrupt", { prompt_id: pid }));
     return Response.json({ ok: true, deleted: s.pending.length, interrupted: s.running.length });
   } catch (err) {
     return errorResponse(err);

@@ -1,10 +1,11 @@
 import path from "node:path";
-import { getPodLink, serverMode } from "./podLink";
+import { currentPod, serverMode } from "./podLink";
 
 export const config = {
   /** Im Server-Modus die Adresse des angemeldeten Pod-Gateways, sonst COMFY_URL (lokal auf dem Pod). */
   get comfyUrl() {
-    if (serverMode()) return (getPodLink()?.url ?? "http://kein-pod.invalid").replace(/\/$/, "");
+    // Server-Modus: Pod des laufenden Kontexts (withPod/withRole), sonst der Standard-Pod
+    if (serverMode()) return (currentPod()?.url ?? "http://kein-pod.invalid").replace(/\/$/, "");
     return (process.env.COMFY_URL || "http://127.0.0.1:8188").replace(/\/$/, "");
   },
   get dataDir() {

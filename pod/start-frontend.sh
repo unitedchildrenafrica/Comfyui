@@ -22,6 +22,9 @@
 #   POD_SECRET          gemeinsames Geheimnis mit dem Server (steht in /etc/pod-frontend.env)
 #   CF_GPU_TUNNEL_TOKEN optional – fester Tunnel für den Pod, sonst Zufalls-Adresse (Quick Tunnel)
 #   GPU_PUBLIC_URL      nur mit CF_GPU_TUNNEL_TOKEN, z. B. https://gpu.comfyusel.uk
+#   POD_KIND            bilder | video | alles – kommt aus setup.sh (gemerkt in /workspace/.pod-kind).
+#                       Laufen zwei Pods, macht der „bilder“-Pod die Bilder und der andere die Videos.
+#   POD_ID              optional – Kennung des Pods beim Server, Standard: Hostname
 #   In diesem Modus wird CF_TUNNEL_TOKEN ignoriert (der Tunnel für die App läuft auf dem Server).
 set -euo pipefail
 
@@ -212,9 +215,18 @@ if [ "$AGENT" = 1 ]; then
   stop_pid heartbeat
   GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | tr -d '"' || true)
   GPU_NAME="${GPU_NAME:-GPU}"
+  # Setup-Art (bilder/video/alles) und Kennung, damit der Server mehrere Pods auseinanderhält
+  KIND_FILE=/workspace/.pod-kind
+  if [ -n "${POD_KIND:-}" ]; then echo "$POD_KIND" > "$KIND_FILE" 2>/dev/null || true; fi
+  POD_KIND="${POD_KIND:-$(cat "$KIND_FILE" 2>/dev/null || echo alles)}"
+  case "$POD_KIND" in bilder|video|alles) ;; *) POD_KIND=alles ;; esac
+  POD_ID="${POD_ID:-$(hostname 2>/dev/null)}"
+  POD_ID=$(printf '%s' "$POD_ID" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-64)
+  POD_ID="${POD_ID:-pod-$RANDOM}"
+  log "Pod-Kennung $POD_ID · Setup „$POD_KIND“"
   : > "$LOG_DIR/heartbeat.log"
   (
-    export VPS_URL POD_SECRET GPU_URL GPU_NAME LOG_DIR
+    export VPS_URL POD_SECRET GPU_URL GPU_NAME LOG_DIR POD_ID POD_KIND
     # Kein Abbruch bei Fehlern: „noch keine Adresse“ (grep findet nichts) ist hier normal
     set +e +o pipefail
     ok=0
@@ -252,7 +264,7 @@ if [ "$AGENT" = 1 ]; then
           echo " $(date '+%H:%M:%S') warte auf Tunnel-Adresse …${hint:+ letzter Tunnel-Fehler: $hint}" >> "$LOG_DIR/heartbeat.log"
         fi
       elif curl -fsS -m 20 -X POST "$VPS_URL/api/pod/register" -H "x-pod-secret: $POD_SECRET" \
-          -H "content-type: application/json" -d "{\"url\":\"$url\",\"gpu\":\"$GPU_NAME\"}" >> "$LOG_DIR/heartbeat.log" 2>&1; then
+          -H "content-type: application/json" -d "{\"url\":\"$url\",\"gpu\":\"$GPU_NAME\",\"id\":\"$POD_ID\",\"kind\":\"$POD_KIND\"}" >> "$LOG_DIR/heartbeat.log" 2>&1; then
         echo " $(date '+%H:%M:%S') $url" >> "$LOG_DIR/heartbeat.log"
         ok=1
       fi

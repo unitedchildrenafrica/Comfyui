@@ -4,8 +4,8 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { comfyFetch } from "./comfy";
 import { config } from "./config";
-import { type HistoryEntry, getHistory, getHistoryEntry } from "./history";
-import { getPodLink, serverMode } from "./podLink";
+import { type HistoryEntry, getHistoryEntry, podHistory } from "./history";
+import { getOnlinePods, serverMode, withPod } from "./podLink";
 import { resolveOutputFile } from "./zip";
 
 // Server-Modus: Jedes fertige Bild/Video wird vom Pod auf den Server kopiert und in einem Index
@@ -19,6 +19,12 @@ export interface MirroredFile {
   promptId: string;
   timestamp: number;
   durationMs: number | null;
+  /**
+   * Name auf dem Pod, falls er hier umbenannt werden musste: Ein neuer Pod zählt wieder ab 00001
+   * und erzeugt Namen, die es von einem früheren Pod schon gibt – dann bekommt die neue Datei
+   * einen eindeutigen Namen, statt die alte zu überschreiben oder versteckt zu werden.
+   */
+  podFilename?: string;
 }
 
 interface Index {
@@ -37,7 +43,8 @@ interface Index {
 
 interface State {
   index: Index | null;
-  /** nach Neustart/Umstellung einmal einen größeren Teil des Verlaufs nachholen */
+  /** nach Neustart/Umstellung einmal einen größeren Teil des Verlaufs nachholen – je Pod */
+  caughtUp?: Set<string>;
   catchUp?: boolean;
   /** Ab diesem Zeitpunkt wieder weit zurückschauen, weil Dateien nicht kopiert werden konnten */
   retryAt?: number;
@@ -118,26 +125,58 @@ function download(f: { filename: string; subfolder: string; type: string }, dest
   return job;
 }
 
+/** „bild_001_00001_.png“ → „bild_001_00001__3d82a7f7.png“ (eindeutig je Job) */
+export function uniqueLocalName(filename: string, promptId: string, n = 0): string {
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot) : "";
+  return `${base}__${promptId.replace(/[^\w]/g, "").slice(0, 8)}${n ? `_${n}` : ""}${ext}`;
+}
+
+/** Wo liegt (bzw. landet) diese Pod-Datei dieses Jobs auf dem Server? */
+function localTarget(idx: Index, f: { subfolder: string; filename: string }, promptId: string): { filename: string; renamed: boolean } {
+  // schon unter eigenem Namen gespiegelt?
+  for (const m of Object.values(idx.files)) {
+    if (m.promptId === promptId && m.subfolder === f.subfolder && (m.podFilename ?? m.filename) === f.filename) return { filename: m.filename, renamed: !!m.podFilename };
+  }
+  const cur = idx.files[key(f)];
+  if (!cur || cur.promptId === promptId) return { filename: f.filename, renamed: false };
+  // Name gehört einem anderen Job (früherer Pod) → eindeutigen Namen nehmen
+  let n = 0;
+  let name = uniqueLocalName(f.filename, promptId);
+  while (idx.files[key({ subfolder: f.subfolder, filename: name })]) name = uniqueLocalName(f.filename, promptId, ++n);
+  return { filename: name, renamed: true };
+}
+
 /** Kopiert alle Ausgaben eines Jobs (falls noch nicht da) und trägt sie in den Index ein. */
 export async function mirrorEntry(e: HistoryEntry): Promise<boolean> {
+  // im Kontext des Pods, auf dem der Job lief
+  if (e.podId && serverMode()) return withPod(e.podId, () => mirrorHere(e));
+  return mirrorHere(e);
+}
+
+async function mirrorHere(e: HistoryEntry): Promise<boolean> {
   const idx = await index();
   let ok = true;
   const deletedAt = idx.deletedAt ?? {};
   for (const f of e.files) {
     if (f.type !== "output" || f.kind === "audio" || isDeleted(deletedAt, f, e.timestamp)) continue;
-    const dest = resolveOutputFile(f.subfolder, f.filename);
+    const target = localTarget(idx, f, e.promptId);
+    const local = { subfolder: f.subfolder, filename: target.filename };
+    const dest = resolveOutputFile(local.subfolder, local.filename);
     if (!dest) continue;
     try {
       const exists = await fs.stat(dest).then((s) => s.size > 0, () => false);
       if (!exists) await download(f, dest);
-      idx.files[key(f)] = {
-        filename: f.filename,
+      idx.files[key(local)] = {
+        filename: local.filename,
         subfolder: f.subfolder,
         type: "output",
         kind: f.kind,
         promptId: e.promptId,
         timestamp: e.timestamp || Date.now(),
         durationMs: e.durationMs,
+        ...(target.renamed ? { podFilename: f.filename } : {}),
       };
     } catch (err) {
       ok = false;
@@ -152,35 +191,45 @@ export async function mirrorEntry(e: HistoryEntry): Promise<boolean> {
   return ok;
 }
 
-/** Fertige Jobs, die noch nicht gespiegelt sind, nachholen (auch Jobs aus der ComfyUI-Oberfläche). */
+/** Fertige Jobs, die noch nicht gespiegelt sind, nachholen (auch Jobs aus der ComfyUI-Oberfläche) – von allen Pods. */
 export async function mirrorPending() {
-  if (!serverMode() || !getPodLink() || st.running) return;
+  if (!serverMode() || st.running) return;
+  const pods = getOnlinePods();
+  if (!pods.length) return;
   st.running = true;
   try {
     const idx = await index();
     const done = new Set(idx.prompts);
-    // Beim ersten Durchlauf nach dem Start (oder nach der Umstellung) und nach Fehlern weit zurück,
-    // sonst nur die letzten
+    const caught = (st.caughtUp ??= new Set());
+    // Beim ersten Durchlauf je Pod (nach Start/Umstellung) und nach Fehlern weit zurück, sonst nur die letzten
     const retry = st.retryAt !== undefined && Date.now() >= st.retryAt;
-    const limit = st.catchUp === false && !retry ? 60 : 2000;
-    const entries = (await getHistory(limit)).filter((e) => e.status === "success" && e.files.length && !done.has(e.promptId));
-    if (retry) st.retryAt = undefined;
-    for (const e of entries) await mirrorEntry(e);
+    if (st.catchUp) caught.clear();
     st.catchUp = false;
-  } catch {
-    // Pod gerade nicht erreichbar – beim nächsten Durchlauf wieder versuchen
+    let allOk = true;
+    for (const pod of pods) {
+      try {
+        const limit = caught.has(pod.id) && !retry ? 60 : 2000;
+        const entries = (await withPod(pod.id, () => podHistory(limit))).filter((e) => e.status === "success" && e.files.length && !done.has(e.promptId));
+        for (const e of entries) await mirrorEntry({ ...e, podId: pod.id });
+        caught.add(pod.id);
+      } catch {
+        // dieser Pod gerade nicht erreichbar – beim nächsten Durchlauf wieder versuchen
+        allOk = false;
+      }
+    }
+    if (retry && allOk) st.retryAt = undefined;
   } finally {
     st.running = false;
   }
 }
 
 /** Direkt nach einem fertigen Job (kurz warten, bis ComfyUI den Verlauf geschrieben hat). */
-export function mirrorSoon(promptId: string) {
+export function mirrorSoon(promptId: string, podId: string | null = null) {
   if (!serverMode()) return;
   setTimeout(async () => {
     try {
-      const e = await getHistoryEntry(promptId);
-      if (e && e.status === "success") await mirrorEntry(e);
+      const e = podId ? await withPod(podId, () => getHistoryEntry(promptId)) : await getHistoryEntry(promptId);
+      if (e && e.status === "success") await mirrorEntry({ ...e, podId: e.podId ?? podId ?? undefined });
     } catch {}
   }, 1500);
 }
@@ -215,8 +264,11 @@ export async function forgetMirroredMany(list: { subfolder: string; filename: st
   const now = Date.now();
   const deletedAt = (idx.deletedAt ??= {});
   for (const f of list) {
+    const m = idx.files[key(f)];
     delete idx.files[key(f)];
     deletedAt[key(f)] = now;
+    // umbenannte Kopie: auch den Pod-Namen vermerken, sonst taucht der Live-Eintrag wieder auf
+    if (m?.podFilename) deletedAt[key({ subfolder: m.subfolder, filename: m.podFilename })] = now;
   }
   // nicht endlos wachsen lassen: nur die jüngsten 50 000 Vermerke behalten
   const keys = Object.keys(deletedAt);
@@ -227,4 +279,9 @@ export async function forgetMirroredMany(list: { subfolder: string; filename: st
 /** Vermerke „gelöscht“ (Schlüssel → Zeitpunkt) für die Galerie */
 export async function deletedMap(): Promise<Record<string, number>> {
   return (await index()).deletedAt ?? {};
+}
+
+/** Job, dem die gespiegelte Datei unter diesem Namen gehört (null = keine Kopie) */
+export async function mirroredOwner(f: { subfolder: string; filename: string }): Promise<string | null> {
+  return (await index()).files[key(f)]?.promptId ?? null;
 }

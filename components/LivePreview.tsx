@@ -8,7 +8,7 @@ import type { LiveSnapshot } from "@/hooks/useLive";
  */
 export function LivePreview({ live, className = "max-h-96" }: { live: LiveSnapshot; className?: string }) {
   if (!live.previewSeq || !live.previewMime) return null;
-  const src = `/api/preview?seq=${live.previewSeq}`;
+  const src = `/api/preview?seq=${live.previewSeq}${live.podId ? `&pod=${encodeURIComponent(live.podId)}` : ""}`;
   return (
     <div className="space-y-1">
       {live.previewMime?.startsWith("video/") ? (
