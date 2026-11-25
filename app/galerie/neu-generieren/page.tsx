@@ -18,7 +18,7 @@ interface SubmitResult {
 const dateLabel = (ms: number) =>
   new Date(ms).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-const GEN_LABEL: Record<string, string> = { wai: "WAI", pony: "Pony", anima: "Anima", h3: "Video H3" };
+const GEN_LABEL: Record<string, string> = { wai: "WAI", pony: "Pony", anima: "Anima", krea2: "Krea 2", h3: "Video H3" };
 
 function count(s: Pick<RestoreSet, "kind" | "jobs" | "perJob">) {
   const n = s.jobs * s.perJob;

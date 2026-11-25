@@ -2,7 +2,7 @@
 
 Mobile Web-App (Next.js) für ComfyUI. Läuft direkt auf dem GPU-Pod (Vast.ai / RunPod) neben ComfyUI und ist über einen Cloudflare Tunnel unter **https://comfy.comfyusel.uk** erreichbar.
 
-- **Bild:** WAI / Pony / Anima, bedient wie TensorHub Text2Img, Einzel- und Batch-Prompts (200+ Blöcke, alle sofort serverseitig in der Queue)
+- **Bild:** WAI / Pony / Anima / Krea 2 Turbo, bedient wie TensorHub Text2Img, Einzel- und Batch-Prompts (200+ Blöcke, alle sofort serverseitig in der Queue)
 - **Video:** MiniMax H3 (DaSiWa-Director), Prompt-Blöcke, Referenzbilder und Audio
 - **Warteschlange, Galerie, Einstellungen**, Login mit einem Passwort, als PWA installierbar
 
@@ -38,14 +38,13 @@ Das ist `GH_TOKEN`.
 |---|---|---|
 | `APP_PASSWORD` | ja | Login-Passwort der App |
 | `CIVITAI_TOKEN` | ja | Civitai-API-Token für die Modell-Downloads |
-| `HF_TOKEN` | für `video` | Hugging-Face-Token für die H3-Modelle |
+| `HF_TOKEN` | für `video` | Hugging-Face-Token für die H3-Modelle (Krea 2 lädt auch ohne) |
 | `GH_TOKEN` | ja (privates Repo) | Read-only-Token aus Schritt 2 |
 | `CF_TUNNEL_TOKEN` | empfohlen | Tunnel-Token aus Schritt 1. Fehlt er, startet ein Quick Tunnel mit zufälliger `trycloudflare.com`-Adresse |
 | `DISCORD_WEBHOOK_URL` | nein | Schickt „Pod bereit: …“ plus GPU-Name, sobald alles läuft (beim Quick Tunnel mit der zufälligen Adresse) |
 | `SESSION_SECRET` | nein | Signiert das Login-Cookie. Ohne Angabe wird einer erzeugt und in `DATA_DIR` gespeichert |
 | `COMFY_URL` | nein | Standard im Pod-Skript `http://127.0.0.1:18188` |
 | `DATA_DIR` | nein | Standard `/workspace/pod-frontend-data` (Presets, Job-Einstellungen) |
-| `OPENAI_API_KEY` | nein | Nur für den Tab **Knete** (Fotos im Knete-Stil über OpenAI). Im Server-Modus stattdessen `bash /root/setup-server.sh openai` |
 
 ### 4. Setup-Skript für jeden neuen Pod
 
@@ -53,7 +52,7 @@ Das ist `GH_TOKEN`.
 
 | Modus | Inhalt |
 |---|---|
-| `bilder` | Inspire Pack, Impact Pack + Subpack (ADetailer), WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Remacri, Bild-LoRAs |
+| `bilder` | Inspire Pack, Impact Pack + Subpack (ADetailer), WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Krea 2 Turbo (+ Encoder, 2 LoRAs), Remacri, Bild-LoRAs |
 | `video` | MiniMax H3 Singularity: ComfyUI-Update, Custom Nodes (DaSiWa, KJNodes, VHS …), DiT, Text-Encoder, VAEs, TAE, RIFE, H3-LoRAs, x264-Patch |
 | `alles` | beides |
 
@@ -137,22 +136,6 @@ bash /root/setup-server.sh patreon
 ```
 
 und Client ID, Client Secret, Creator's Access Token und Creator's Refresh Token eingeben (werden nicht angezeigt, landen in `/etc/pod-frontend.env`). Abgelaufene Tokens erneuert die App selbst (`DATA_DIR/patreon-tokens.json`). Zum lokalen Testen gibt es `dev/mock-patreon.mjs`.
-
-### 6d. Knete-Stil (vorübergehend, über OpenAI)
-
-Tab **🎨 Knete**: eigene Fotos 1:1 im Stil deiner Knete-Bilder neu erzeugen. Läuft über die OpenAI-Bild-API (Standard: GPT Image 2.6 „Sunburst“), **nicht** über ComfyUI – geht also auch ohne Pod.
-
-1. **Stil-Referenzen:** 3–6 eigene Knete-Bilder hochladen (bis 10). Sie bleiben gespeichert (`DATA_DIR/knete/refs`).
-2. **Fotos auswählen** (auch 50+ auf einmal), optional Ordnername → **Umwandeln**. Jedes Foto wird nach dem Hochladen sofort auf dem Server in die Warteschlange gestellt; nach dem Hochladen darf das Handy gesperrt werden. Unterbrochene Aufträge laufen nach einem Neustart der App von selbst weiter.
-3. Ergebnisse: in der Auftragskarte (antippen = Vollbild, „👆 Vorher“ gedrückt halten zum Vergleichen, wischen), als **📦 ZIP** oder in der Galerie unter dem Ordner `knete/<name>` (Dateien in `OUTPUT_DIR/knete/`).
-
-Pro Auftrag: Abbrechen, „Fehler nochmal“, einzelne Bilder neu erzeugen, weitere Fotos hinzufügen. Die Kosten werden aus den Token-Angaben von OpenAI mitgerechnet (Preise der GPT-Image-2.x-Modelle, Standard-Tarif). Ist der Schlüssel ungültig oder das Guthaben leer, hält der Auftrag an („▶ Fortsetzen“). Fotos, die der Inhaltsfilter von OpenAI ablehnt, werden als Fehler angezeigt; der Rest läuft weiter.
-
-**Schlüssel:** platform.openai.com → API keys (das ChatGPT-Abo gilt dafür nicht, die API wird separat abgerechnet). Server-Modus: `bash /root/setup-server.sh openai`. Direkt auf dem Pod: `OPENAI_API_KEY` im Template.
-
-**Lokal testen:** `node dev/mock-openai.mjs` und die App mit `OPENAI_BASE_URL=http://127.0.0.1:8199/v1 OPENAI_API_KEY=test` starten.
-
-**Wieder entfernen:** Ordner `app/knete`, `app/api/knete`, `lib/knete.ts`, `lib/server/knete.ts`, `instrumentation.ts`, den Eintrag in `components/BottomNav.tsx` und diesen Abschnitt löschen.
 
 ### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
 

@@ -279,3 +279,7 @@ Jeder abgeschickte Job speichert sein komplettes Settings-Objekt serverseitig un
 9. Phase 2: ADetailer, Continuity, Benachrichtigung wenn Batch fertig
 
 Nach jedem Schritt mit einem echten Pod testen und dem Nutzer kurz zeigen, was geht. Nichts als fertig melden, was nicht gegen den Pod gelaufen ist.
+
+## Git-Ablauf (Wunsch des Nutzers)
+
+Fertige Arbeit **immer direkt auf `main` mergen und pushen**, ohne Pull Request und ohne nachzufragen. Vorher `origin/main` hereinmergen, Typecheck, Tests und `next build` laufen lassen. Der Push auf `main` startet den Release-Build; danach dem Nutzer sagen, dass er auf dem Server `bash /root/setup-server.sh` ausführen muss.

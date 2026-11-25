@@ -1,6 +1,8 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { parseBatch, type BatchError } from "../batch";
 import { buildWorkflow as buildAnima } from "../builders/anima";
+import { buildWorkflow as buildKrea2 } from "../builders/krea2";
+import { krea2Problems } from "../krea2";
 import { buildWorkflow as buildH3, h3PromptText } from "../builders/h3";
 import { buildWorkflow as buildWai } from "../builders/wai";
 import { parseVideoBatch, settingsForItem } from "../h3batch";
@@ -28,14 +30,16 @@ export function randomSeed() {
 }
 
 export function promptItems(s: ImageSettings, defaultNegative: string): PromptItem[] {
+  // Krea 2: kein Negativ (CFG 1) – negative:-Zeilen im Batch werden ignoriert
+  const noNegative = s.generator === "krea2";
   if (s.promptMode === "batch") {
-    const { items, errors } = parseBatch(s.batchText, s.negative.trim() || defaultNegative);
+    const { items, errors } = parseBatch(s.batchText, noNegative ? "" : s.negative.trim() || defaultNegative, { ignoreNegative: noNegative });
     if (errors.length) throw new BatchParseError(errors);
     if (!items.length) throw new BatchParseError([{ block: 0, message: "Keine Prompts gefunden" }]);
     return items;
   }
   if (!s.positive.trim()) throw new BatchParseError([{ block: 0, message: "Positiver Prompt ist leer" }]);
-  return [{ positive: s.positive.trim(), negative: s.negative.trim() || defaultNegative, name: "bild" }];
+  return [{ positive: s.positive.trim(), negative: noNegative ? "" : s.negative.trim() || defaultNegative, name: "bild" }];
 }
 
 export interface SubmitResult {
@@ -54,6 +58,25 @@ export function submitImageJobs(input: ImageSettings): Promise<SubmitResult> {
   return withRole("bild", () => submitImageJobsHere(input));
 }
 
+export class PreflightError extends Error {
+  constructor(public problems: string[]) {
+    super(problems.join(" · "));
+  }
+}
+
+/** Krea 2: Dateien, CLIPLoader-Typ „krea2“ und LoraLoaderModelOnly vor dem Start prüfen. */
+async function assertKrea2Ready(s: ImageSettings) {
+  const [unet, clip, vae, modelOnly] = await Promise.all(["UNETLoader", "CLIPLoader", "VAELoader", "LoraLoaderModelOnly"].map((n) => getNodeInfo(n)));
+  const problems = krea2Problems(s, {
+    unets: comboValues(unet, "unet_name"),
+    clips: comboValues(clip, "clip_name"),
+    vaes: comboValues(vae, "vae_name"),
+    clipTypes: comboValues(clip, "type"),
+    modelOnlyLoras: !!modelOnly,
+  });
+  if (problems.length) throw new PreflightError(problems);
+}
+
 async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> {
   const app = await getAppSettings();
   const settings = { ...input, folder: input.folder.trim() || app.folders[input.generator] };
@@ -62,6 +85,7 @@ async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> 
 
   const shiftNode = await imageShiftNode(settings);
 
+  if (settings.generator === "krea2") await assertKrea2Ready(settings);
   const detailer = await imageDetailer(settings);
 
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
@@ -70,7 +94,12 @@ async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> 
   for (const [index, prompt] of items.entries()) {
     const seed = settings.seed ?? randomSeed();
     const input = { settings, prompt, seed };
-    const wf = settings.generator === "anima" ? buildAnima(input, { shiftNode, detailer }) : buildWai(input, { detailer });
+    const wf =
+      settings.generator === "krea2"
+        ? buildKrea2(input)
+        : settings.generator === "anima"
+          ? buildAnima(input, { shiftNode, detailer })
+          : buildWai(input, { detailer });
     try {
       const promptId = await queuePrompt(wf, clientId);
       registerPromptNodes(promptId, wf);
@@ -212,7 +241,7 @@ async function imageShiftNode(s: ImageSettings): Promise<"ModelSamplingAuraFlow"
   return null;
 }
 
-const imageDetailer = (s: ImageSettings) => (adetailerWanted(s) ? detailerOptions(s) : Promise.resolve(undefined));
+const imageDetailer = (s: ImageSettings) => (s.generator !== "krea2" && adetailerWanted(s) ? detailerOptions(s) : Promise.resolve(undefined));
 
 /**
  * „Gelöschte Sets neu generieren“: Jobs mit ihren gespeicherten Einstellungen, Prompts und Seeds
@@ -250,6 +279,7 @@ async function resubmitGroup(group: JobRecord[], lists: ModelLists, clientId: st
   // Bild: Shift-Node und ADetailer einmal pro Set vom Pod holen (Einstellungen sind im Set gleich)
   const first = remapped[0].settings;
   const shiftNode = kind === "image" ? await imageShiftNode(first as ImageSettings) : null;
+  if (kind === "image" && (first as ImageSettings).generator === "krea2") await assertKrea2Ready(first as ImageSettings);
   const detailer = kind === "image" ? await imageDetailer(first as ImageSettings) : undefined;
   if (kind === "video") await ensureRefsOnPod(remapped.flatMap((r) => (r.settings as H3Settings).refs ?? []));
 
@@ -261,7 +291,12 @@ async function resubmitGroup(group: JobRecord[], lists: ModelLists, clientId: st
       const s = settings as ImageSettings;
       const prompt = job.prompt ?? { positive: s.positive, negative: s.negative, name: job.label || "bild" };
       const input = { settings: s, prompt, seed: job.seed };
-      wf = s.generator === "anima" ? buildAnima(input, { shiftNode, detailer }) : buildWai(input, { detailer });
+      wf =
+        s.generator === "krea2"
+          ? buildKrea2(input)
+          : s.generator === "anima"
+            ? buildAnima(input, { shiftNode, detailer })
+            : buildWai(input, { detailer });
     }
     try {
       const promptId = await queuePrompt(wf, clientId);

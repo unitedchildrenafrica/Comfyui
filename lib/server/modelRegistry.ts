@@ -19,7 +19,22 @@ export interface ModelLink {
 
 const FILE = () => config.dataPath("model-links.json");
 
-export async function getModelLinks(): Promise<Record<string, ModelLink>> {
+const HF_KREA = "https://huggingface.co/Comfy-Org/Krea-2/resolve/main";
+const CIVITAI = "https://civitai.red/api/download/models";
+
+/**
+ * Immer bekannte Links (Krea 2), damit die Dateien auf jedem frischen Pod per Tipp nachladbar sind.
+ * Selbst gemerkte Links mit gleichem Dateinamen gehen vor.
+ */
+export const BUILTIN_MODEL_LINKS: ModelLink[] = [
+  { filename: "krea2_turbo_fp8_scaled.safetensors", type: "unet", url: `${HF_KREA}/diffusion_models/krea2_turbo_fp8_scaled.safetensors`, title: "Krea 2 Turbo (fp8)", savedAt: 0 },
+  { filename: "qwen3vl_4b_fp8_scaled.safetensors", type: "text_encoder", url: `${HF_KREA}/text_encoders/qwen3vl_4b_fp8_scaled.safetensors`, title: "Krea 2 Text-Encoder (Qwen3-VL 4B)", savedAt: 0 },
+  { filename: "qwen_image_vae.safetensors", type: "vae", url: `${HF_KREA}/vae/qwen_image_vae.safetensors`, title: "Qwen-Image-VAE (Krea 2, Anima)", savedAt: 0 },
+  { filename: "krea2_nsfw_v2.safetensors", type: "lora", url: `${CIVITAI}/3065362`, title: "Krea 2 NSFW v2", savedAt: 0 },
+  { filename: "krea2_turbo_nsfw.safetensors", type: "lora", url: `${CIVITAI}/3081369`, title: "Krea 2 Turbo NSFW", savedAt: 0 },
+];
+
+async function storedLinks(): Promise<Record<string, ModelLink>> {
   try {
     const data = JSON.parse(await fs.readFile(FILE(), "utf8"));
     return data && typeof data === "object" ? data : {};
@@ -28,11 +43,15 @@ export async function getModelLinks(): Promise<Record<string, ModelLink>> {
   }
 }
 
+export async function getModelLinks(): Promise<Record<string, ModelLink>> {
+  return { ...Object.fromEntries(BUILTIN_MODEL_LINKS.map((l) => [l.filename, l])), ...(await storedLinks()) };
+}
+
 let queue: Promise<unknown> = Promise.resolve();
 
 export function saveModelLinks(entries: { filename: string; type: string; url: string; title?: string }[]): Promise<void> {
   const run = async () => {
-    const links = await getModelLinks();
+    const links = await storedLinks();
     let changed = false;
     for (const e of entries) {
       const filename = baseName(String(e.filename ?? "")).trim();
@@ -61,7 +80,7 @@ export function saveModelLinks(entries: { filename: string; type: string; url: s
 
 export function deleteModelLink(filename: string): Promise<void> {
   const run = async () => {
-    const links = await getModelLinks();
+    const links = await storedLinks();
     if (!links[filename]) return;
     delete links[filename];
     await fs.writeFile(FILE(), JSON.stringify(links, null, 1));

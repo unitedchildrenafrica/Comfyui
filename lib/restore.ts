@@ -43,7 +43,8 @@ export interface RestoreSet {
 
 export const jobFolder = (job: JobRecord) => (job.kind === "video" ? "video" : (job.settings as ImageSettings).folder || job.generator);
 
-/** Alle Modelle, die ein Job braucht – mit dem Namen, wie er im Job steht */
+/** Anima und Krea 2: UNet + Text-Encoder + VAE statt Checkpoint.
+ *  Alle Modelle, die ein Job braucht – mit dem Namen, wie er im Job steht */
 export function jobModels(job: JobRecord): ModelNeed[] {
   const out: ModelNeed[] = [];
   if (job.kind === "video") {
@@ -56,7 +57,7 @@ export function jobModels(job: JobRecord): ModelNeed[] {
   }
   const s = job.settings as ImageSettings;
   const add = (name: string | undefined, type: ModelType) => name && out.push({ name, type, role: "bild" });
-  if (s.generator === "anima") {
+  if (s.generator === "anima" || s.generator === "krea2") {
     add(s.unet, "unet");
     add(s.textEncoder, "text_encoder");
     add(s.vae, "vae");
@@ -104,7 +105,7 @@ export function remapJobModels<T extends ImageSettings | H3Settings>(job: JobRec
     s.loras = (s.loras ?? []).map((l) => (l.enabled && l.name && l.name !== "None" ? { ...l, name: map(l.name, "lora", "video") } : l));
   } else {
     const s = settings as ImageSettings;
-    if (s.generator === "anima") {
+    if (s.generator === "anima" || s.generator === "krea2") {
       if (s.unet) s.unet = map(s.unet, "unet", "bild");
       if (s.textEncoder) s.textEncoder = map(s.textEncoder, "text_encoder", "bild");
       if (s.vae) s.vae = map(s.vae, "vae", "bild");

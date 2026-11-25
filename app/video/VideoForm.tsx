@@ -18,6 +18,7 @@ import { H3_BLOCK_KEYS, type H3Ref, type H3Settings, type JobRecord } from "@/li
 import { RefEditor, imageLimit } from "./RefEditor";
 import { RefTabsBar, emptyTabs, useRefTabs } from "./RefTabs";
 import { TabGroups } from "./TabGroups";
+import { samplerOptions } from "@/lib/samplers";
 
 const STORAGE_KEY = "pf.video.v1";
 
@@ -443,7 +444,7 @@ export function VideoForm() {
         </Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Sampler">
-            <Select value={s.sampler} onChange={(v) => set({ sampler: v })} options={o?.h3.samplers ?? []} />
+            <Select value={s.sampler} onChange={(v) => set({ sampler: v })} options={samplerOptions(o?.h3.samplers ?? [])} />
           </Field>
           <Field label="Scheduler">
             <Select value={s.scheduler} onChange={(v) => set({ scheduler: v })} options={o?.h3.schedulers ?? []} />

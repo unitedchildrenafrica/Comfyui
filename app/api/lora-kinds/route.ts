@@ -13,7 +13,7 @@ export async function GET() {
   }
 }
 
-/** PUT { items: [{ name, use: "image" | "video" | "both" | null }] } */
+/** PUT { items: [{ name, use: "image" | "video" | "both" | "krea2" | null }] } */
 export async function PUT(req: NextRequest) {
   try {
     const { items } = (await req.json()) as { items?: { name: string; use: LoraUse | null }[] };

@@ -84,6 +84,11 @@ describe("jobModels", () => {
     expect(jobModels(j).map((m) => `${m.type}:${m.name}`)).toEqual(["unet:u.safetensors", "text_encoder:t.safetensors", "vae:v.safetensors"]);
   });
 
+  it("Krea 2: UNet, Text-Encoder, VAE wie Anima", () => {
+    const j = job({ generator: "krea2", settings: img({ generator: "krea2", unet: "krea2.safetensors", textEncoder: "te.safetensors", vae: "ae.safetensors", loras: [], upscale: { ...base.upscale, enabled: false } }) });
+    expect(jobModels(j).map((m) => `${m.type}:${m.name}`)).toEqual(["unet:krea2.safetensors", "text_encoder:te.safetensors", "vae:ae.safetensors"]);
+  });
+
   it("Video: DiT, Text-Encoder, LoRAs auf dem Video-Pod", () => {
     const s = { ditModel: "h3.safetensors", textEncoder: "te.safetensors", loras: [{ name: "v.safetensors", strength: 1, enabled: true }, { name: "None", strength: 1, enabled: true }] } as H3Settings;
     const m = jobModels(job({ kind: "video", generator: "h3", settings: s }));

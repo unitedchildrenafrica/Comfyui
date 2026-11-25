@@ -1,10 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { LoraUse } from "../loraKinds";
+import { LORA_USES, type LoraUse } from "../loraKinds";
 import { baseName } from "../notes";
 import { config } from "./config";
 
-// Selbst gewählte Zuordnung Bild/Video pro LoRA (Dateiname ohne Ordner → Verwendung)
+// Selbst gewählte Zuordnung Bild/Video/Krea 2 pro LoRA (Dateiname ohne Ordner → Verwendung)
 
 const FILE = () => config.dataPath("lora-kinds.json");
 
@@ -26,7 +26,7 @@ export function setLoraOverrides(entries: { name: string; use: LoraUse | null }[
     for (const { name, use } of entries) {
       const file = baseName(String(name ?? "")).trim();
       if (!file) continue;
-      if (use === "image" || use === "video" || use === "both") data[file] = use;
+      if (use && LORA_USES.includes(use)) data[file] = use;
       else delete data[file];
     }
     await fs.mkdir(path.dirname(FILE()), { recursive: true });

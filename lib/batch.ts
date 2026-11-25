@@ -11,17 +11,23 @@ const KEY_RE = /^\s*(positive|negative|name)\s*:\s?(.*)$/i;
 /**
  * Format:
  *   positive: …
- *   negative: …   (optional → globales Standard-Negativ)
+ *   negative: …   (optional → globales Standard-Negativ; bei Krea 2 ignoriert)
  *   name: …       (optional → bild_###)
  *   ---
  * Folgezeilen ohne Schlüssel gehören zum vorherigen Feld.
  */
-export function parseBatch(text: string, defaultNegative: string): { items: PromptItem[]; errors: BatchError[] } {
+export function parseBatch(
+  text: string,
+  defaultNegative: string,
+  opts: { ignoreNegative?: boolean } = {},
+): { items: PromptItem[]; errors: BatchError[]; ignoredNegatives: number } {
   const items: PromptItem[] = [];
   const errors: BatchError[] = [];
   const blocks = text.replace(/\r\n/g, "\n").split(/^\s*---\s*$/m);
   const seen = new Set<string>();
   let block = 0;
+  /** Krea 2: Blöcke mit negative:-Zeile (wird ignoriert, nur als Hinweis gezählt) */
+  let ignoredNegatives = 0;
 
   blocks.forEach((raw) => {
     if (!raw.trim()) return;
@@ -61,7 +67,8 @@ export function parseBatch(text: string, defaultNegative: string): { items: Prom
     }
     if (bad) return;
     seen.add(name);
-    items.push({ positive, negative: get("negative") || defaultNegative, name });
+    if (opts.ignoreNegative && get("negative")) ignoredNegatives++;
+    items.push({ positive, negative: opts.ignoreNegative ? "" : get("negative") || defaultNegative, name });
   });
-  return { items, errors };
+  return { items, errors, ignoredNegatives };
 }

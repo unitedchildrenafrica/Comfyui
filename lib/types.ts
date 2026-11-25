@@ -1,6 +1,6 @@
 // Gemeinsame Typen für Client und Server
 
-export type ImageGenerator = "wai" | "pony" | "anima";
+export type ImageGenerator = "wai" | "pony" | "anima" | "krea2";
 
 export interface LoraEntry {
   name: string;
@@ -21,9 +21,9 @@ export interface ImageSettings {
   generator: ImageGenerator;
   /** WAI / Pony */
   checkpoint: string;
-  /** WAI / Pony: "auto" oder VAE-Name. Anima: VAE-Name (Node 62) */
+  /** WAI / Pony: "auto" oder VAE-Name. Anima / Krea 2: VAE-Name (Node 62) */
   vae: string;
-  /** Anima */
+  /** Anima / Krea 2 */
   unet: string;
   textEncoder: string;
   shiftEnabled: boolean;

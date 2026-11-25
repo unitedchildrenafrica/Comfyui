@@ -2,7 +2,6 @@ import { promises as fs } from "node:fs";
 import type { NextRequest } from "next/server";
 import { type MediaFile, getHistory } from "@/lib/server/history";
 import { errorResponse } from "@/lib/server/http";
-import { kneteGalleryRows } from "@/lib/server/knete";
 import { deletedMap, isDeleted, listMirrored } from "@/lib/server/mirror";
 import { serverMode } from "@/lib/server/podLink";
 import { getJobs } from "@/lib/server/store";
@@ -61,19 +60,6 @@ export async function GET(req: NextRequest) {
       rows = rows.filter((_, i) => keep[i]);
     }
 
-    // Knete-Bilder (OpenAI, nicht ComfyUI) dazu – ohne doppelte Einträge
-    const kneteLabels = new Map<string, string>();
-    try {
-      const have = new Set(rows.map((r) => key(r.file)));
-      for (const k of await kneteGalleryRows()) {
-        if (have.has(key(k.file))) continue;
-        rows.push({ file: k.file, promptId: k.promptId, timestamp: k.timestamp, durationMs: k.durationMs });
-        kneteLabels.set(k.promptId, k.label);
-      }
-    } catch (err) {
-      console.error("[galerie] Knete-Bilder", err);
-    }
-
     rows.sort((a, b) => b.timestamp - a.timestamp);
     rows = rows.slice(0, max);
     const jobs = await getJobs([...new Set(rows.map((r) => r.promptId))]);
@@ -83,7 +69,7 @@ export async function GET(req: NextRequest) {
       timestamp: r.timestamp,
       durationMs: r.durationMs,
       folder: r.file.subfolder.split("/")[0] || "(ohne)",
-      label: jobs[r.promptId]?.label ?? kneteLabels.get(r.promptId) ?? r.file.filename,
+      label: jobs[r.promptId]?.label ?? r.file.filename,
       generator: jobs[r.promptId]?.generator ?? null,
       seed: jobs[r.promptId]?.seed ?? null,
       hasSettings: !!jobs[r.promptId],
