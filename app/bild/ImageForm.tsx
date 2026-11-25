@@ -14,6 +14,7 @@ import { api, ApiError, IMAGE_FORM_KEY, loadLocal, saveLocal } from "@/lib/clien
 import { ASPECTS, DEFAULT_NEGATIVE, UPSCALE_FACTORS, defaultImageSettings } from "@/lib/defaults";
 import { type Character, findAvailable } from "@/lib/notes";
 import type { ImageGenerator, ImageSettings, JobRecord } from "@/lib/types";
+import { samplerOptions } from "@/lib/samplers";
 
 const GENERATORS: { value: ImageGenerator; label: string }[] = [
   { value: "wai", label: "WAI" },
@@ -175,7 +176,7 @@ export function ImageForm() {
   };
 
   const o = options;
-  const samplerOpts = o?.samplers ?? [];
+  const samplerOpts = samplerOptions(o?.samplers ?? []);
   const schedulerOpts = o?.schedulers ?? [];
 
   return (
