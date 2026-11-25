@@ -7,13 +7,16 @@ export interface ImageJobInput {
   seed: number;
 }
 
-/** Gemeinsame Werte der TensorHub-Templates (WAI und Anima haben dieselben Node-IDs). */
-export function applyCommon(wf: ApiWorkflow, { settings: s, prompt, seed }: ImageJobInput, defaultFolder: string) {
+/**
+ * Gemeinsame Werte der TensorHub-Templates (WAI, Anima und Krea 2 haben dieselben Node-IDs).
+ * `negative: false` (Krea 2): Node 5 ist ein ConditioningZeroOut ohne Text.
+ */
+export function applyCommon(wf: ApiWorkflow, { settings: s, prompt, seed }: ImageJobInput, defaultFolder: string, opts: { negative?: boolean } = {}) {
   // Inspire-Batch-Nodes (ohne class_type) und ihre Eingaben raus, Batching macht die App
   removeNodes(wf, ["2", "3", "30", "31", "50"]);
 
   node(wf, "4").inputs.text = prompt.positive;
-  node(wf, "5").inputs.text = prompt.negative;
+  if (opts.negative !== false) node(wf, "5").inputs.text = prompt.negative;
 
   Object.assign(node(wf, "6").inputs, {
     width: s.width,
@@ -28,15 +31,15 @@ export function applyCommon(wf: ApiWorkflow, { settings: s, prompt, seed }: Imag
   node(wf, "15").inputs.filename_prefix = `${safeFolder(s.folder, defaultFolder)}/${prompt.name}`;
 }
 
-/** Hochskalieren an/aus, Faktor, Modell oder Lanczos. */
-export function applyUpscale(wf: ApiWorkflow, s: ImageSettings) {
+/** Hochskalieren an/aus, Faktor, Modell oder Lanczos. `multiple`: Rundung der Zielgröße. */
+export function applyUpscale(wf: ApiWorkflow, s: ImageSettings, multiple = 8) {
   const up = s.upscale;
   if (!up.enabled) {
     removeNodes(wf, ["40", "41", "11", "12", "13", "14"]);
     node(wf, "15").inputs.images = ["8", 0];
     return;
   }
-  Object.assign(node(wf, "11").inputs, scaledSize(s.width, s.height, up.factor));
+  Object.assign(node(wf, "11").inputs, scaledSize(s.width, s.height, up.factor, multiple));
   if (up.upscaler === "lanczos") {
     removeNodes(wf, ["40", "41"]);
     node(wf, "11").inputs.image = ["8", 0];
@@ -71,4 +74,20 @@ export function insertLoraChain(wf: ApiWorkflow, loras: LoraEntry[], model: Ref,
     clip = [id, 1];
   }
   return { model, clip };
+}
+
+/** Hängt eine Kette aus LoraLoaderModelOnly-Nodes ein (nur Modell, kein CLIP – Krea 2). */
+export function insertModelLoraChain(wf: ApiWorkflow, loras: LoraEntry[], model: Ref): Ref {
+  let i = 0;
+  for (const lora of loras) {
+    if (!lora.enabled || !lora.name || lora.name === "None") continue;
+    const id = `900${i++}`;
+    wf[id] = {
+      class_type: "LoraLoaderModelOnly",
+      inputs: { lora_name: lora.name, strength_model: lora.strength, model },
+      _meta: { title: `LoRA ${i}` },
+    };
+    model = [id, 0];
+  }
+  return model;
 }

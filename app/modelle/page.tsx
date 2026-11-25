@@ -19,8 +19,8 @@ const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6
 
 interface Choice extends ResolvedFile {
   selected: boolean;
-  /** nur LoRAs: für Bilder oder Videos */
-  use: "image" | "video" | null;
+  /** nur LoRAs: für Bilder (WAI/Pony/Anima), Videos oder Krea 2 */
+  use: "image" | "video" | "krea2" | null;
 }
 
 interface ModelLink {
@@ -60,7 +60,8 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
     const list = podList(options, l.type);
     return list ? (findAvailable(l.filename, list) ? "here" : "missing") : "unknown";
   };
-  const missing = links.filter((l) => status(l) === "missing" && !state[l.filename]?.ok);
+  // Fest hinterlegte Links (Krea 2, savedAt 0) nicht mit „Alle fehlenden“ laden – nicht jeder Pod braucht sie
+  const missing = links.filter((l) => status(l) === "missing" && !state[l.filename]?.ok && l.savedAt !== 0);
   const shown = showAll ? links : links.filter((l) => status(l) !== "here");
 
   const get = async (l: ModelLink) => {
@@ -114,9 +115,13 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
                     {s?.busy ? "…" : "⬇ Neu laden"}
                   </button>
                 ))}
-              <button type="button" className="h-9 w-8 text-muted" aria-label="Link vergessen" onClick={() => forget(l)}>
-                ✕
-              </button>
+              {l.savedAt !== 0 ? (
+                <button type="button" className="h-9 w-8 text-muted" aria-label="Link vergessen" onClick={() => forget(l)}>
+                  ✕
+                </button>
+              ) : (
+                <span className="text-xs text-muted">fest</span>
+              )}
               {s?.error && <span className="w-full text-xs text-red-300">{s.error}</span>}
             </li>
           );
@@ -132,13 +137,14 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
 const USE_CHIPS: { value: LoraUse; label: string }[] = [
   { value: "image", label: "🖼️ Bild" },
   { value: "video", label: "🎬 Video" },
-  { value: "both", label: "Beide" },
+  { value: "krea2", label: "✨ Krea 2" },
+  { value: "both", label: "Bild + Video" },
 ];
 
 /** Jede LoRA einer Liste zuordnen – Bild-LoRAs erscheinen dann nicht mehr bei Video und umgekehrt. */
 function LoraSorter({ options }: { options: Options | null }) {
   const [overrides, setOverrides] = useState<Record<string, LoraUse>>({});
-  const [filter, setFilter] = useState<"open" | "image" | "video" | "all">("open");
+  const [filter, setFilter] = useState<"open" | "image" | "video" | "krea2" | "all">("open");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api<{ overrides: Record<string, LoraUse> }>("/api/lora-kinds").then((r) => setOverrides(r.overrides), () => {});
@@ -146,8 +152,10 @@ function LoraSorter({ options }: { options: Options | null }) {
   const loras = options?.loras ?? [];
   if (!loras.length) return null;
   const rows = loras.map((name) => ({ name, ...classifyLora(name, overrides) }));
-  const count = (f: typeof filter) => rows.filter((r) => (f === "open" ? !r.use : f === "all" ? true : r.use === f || r.use === "both")).length;
-  const shown = rows.filter((r) => (filter === "open" ? !r.use : filter === "all" ? true : r.use === filter || r.use === "both"));
+  const inFilter = (r: (typeof rows)[number], f: typeof filter) =>
+    f === "open" ? !r.use : f === "all" ? true : r.use === f || (r.use === "both" && f !== "krea2");
+  const count = (f: typeof filter) => rows.filter((r) => inFilter(r, f)).length;
+  const shown = rows.filter((r) => inFilter(r, filter));
 
   const set = async (name: string, use: LoraUse | null) => {
     setError(null);
@@ -160,9 +168,9 @@ function LoraSorter({ options }: { options: Options | null }) {
 
   return (
     <section id="loras" className="card scroll-mt-4 space-y-3 p-4">
-      <h2 className="font-semibold">LoRAs: Bild oder Video</h2>
+      <h2 className="font-semibold">LoRAs: Bild, Video oder Krea 2</h2>
       <p className="text-xs text-muted">
-        Bei „Bild“ stehen nur Bild-LoRAs zur Auswahl, bei „Video“ nur Video-LoRAs. Bekannte LoRAs sind automatisch zugeordnet, nicht zugeordnete stehen in beiden Listen.
+        Bei „Bild“ (WAI/Pony/Anima) stehen nur Bild-LoRAs zur Auswahl, bei „Video“ nur Video-LoRAs, bei Krea 2 nur Krea-LoRAs. Bekannte LoRAs sind automatisch zugeordnet, nicht zugeordnete stehen in allen Listen.
       </p>
       <div className="flex flex-wrap gap-1.5">
         {(
@@ -170,6 +178,7 @@ function LoraSorter({ options }: { options: Options | null }) {
             ["open", "Nicht zugeordnet"],
             ["image", "Bild"],
             ["video", "Video"],
+            ["krea2", "Krea 2"],
             ["all", "Alle"],
           ] as const
         ).map(([v, label]) => (
@@ -197,13 +206,13 @@ function LoraSorter({ options }: { options: Options | null }) {
                 </button>
               )}
             </p>
-            <div className="flex gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {USE_CHIPS.map((c) => (
                 <button
                   key={c.value}
                   type="button"
                   onClick={() => set(r.name, c.value)}
-                  className={`min-h-9 flex-1 rounded-lg border text-sm ${r.use === c.value ? (r.auto ? "border-accent/60 text-accent" : "border-accent bg-accent text-white") : "border-line text-soft"}`}
+                  className={`min-h-9 rounded-lg border text-sm ${r.use === c.value ? (r.auto ? "border-accent/60 text-accent" : "border-accent bg-accent text-white") : "border-line text-soft"}`}
                 >
                   {c.label}
                 </button>
@@ -277,7 +286,7 @@ export default function ModelsPage() {
       return;
     }
     if (items.some((c) => c.type === "lora" && !c.use)) {
-      setError("Bitte bei der LoRA wählen: für Bilder oder für Videos.");
+      setError("Bitte bei der LoRA wählen: für Bilder, für Videos oder für Krea 2.");
       return;
     }
     setBusy(true);
@@ -371,14 +380,14 @@ export default function ModelsPage() {
                   <input className="input text-sm" value={c.filename} onChange={(e) => patch(i, { filename: e.target.value })} aria-label="Dateiname" />
                   {c.type === "lora" && (
                     <div className="flex gap-1.5">
-                      {(["image", "video"] as const).map((u) => (
+                      {(["image", "video", "krea2"] as const).map((u) => (
                         <button
                           key={u}
                           type="button"
                           onClick={() => patch(i, { use: u })}
                           className={`min-h-10 flex-1 rounded-lg border text-sm ${c.use === u ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
                         >
-                          {u === "image" ? "🖼️ für Bilder" : "🎬 für Videos"}
+                          {u === "image" ? "🖼️ für Bilder" : u === "video" ? "🎬 für Videos" : "✨ Krea 2"}
                         </button>
                       ))}
                     </div>

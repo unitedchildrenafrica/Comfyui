@@ -145,7 +145,7 @@ function normalize<C extends CollectionName>(col: C, raw: unknown): Item<C> {
       ...base,
       name: str(r.name, 300),
       series: str(r.series, 300),
-      generator: oneOf(r.generator, ["wai", "pony", "anima"] as const, "wai"),
+      generator: oneOf(r.generator, ["wai", "pony", "anima", "krea2"] as const, "wai"),
       checkpoint: str(r.checkpoint, 500),
       positive: str(r.positive, 50_000),
       negative: str(r.negative, 50_000),

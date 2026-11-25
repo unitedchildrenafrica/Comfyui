@@ -21,7 +21,11 @@ const GENS: { value: ImageGenerator; label: string }[] = [
   { value: "wai", label: "WAI" },
   { value: "pony", label: "Pony" },
   { value: "anima", label: "Anima" },
+  { value: "krea2", label: "Krea 2" },
 ];
+
+/** Nur WAI/Pony haben einen Checkpoint */
+const hasCheckpoint = (g: ImageGenerator) => g === "wai" || g === "pony";
 
 const blank = (): Character => ({
   id: newId(),
@@ -47,7 +51,20 @@ function useModelLinks() {
   return { links, find, reload: load };
 }
 
-function CharacterEditor({ initial, notes, loras, checkpoints, onDone }: { initial: Character; notes: NotesApi; loras: string[]; checkpoints: string[]; onDone: () => void }) {
+function CharacterEditor({
+  initial,
+  notes,
+  lorasFor,
+  checkpoints,
+  onDone,
+}: {
+  initial: Character;
+  notes: NotesApi;
+  /** LoRA-Auswahl passend zum Generator (Krea 2 hat eigene LoRAs) */
+  lorasFor: (g: ImageGenerator) => string[];
+  checkpoints: string[];
+  onDone: () => void;
+}) {
   const [c, setC] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const set = (x: Partial<Character>) => setC((v) => ({ ...v, ...x }));
@@ -62,7 +79,7 @@ function CharacterEditor({ initial, notes, loras, checkpoints, onDone }: { initi
     if (!s) return setError("Im Bild-Formular ist noch nichts gespeichert.");
     set({
       generator: g,
-      checkpoint: g === "anima" ? "" : s.checkpoint ?? "",
+      checkpoint: hasCheckpoint(g) ? s.checkpoint ?? "" : "",
       positive: s.positive ?? "",
       negative: s.negative ?? "",
       loras: (s.loras ?? []).filter((l) => l.enabled && l.name).map((l) => ({ name: l.name, strength: l.strength })),
@@ -99,7 +116,7 @@ function CharacterEditor({ initial, notes, loras, checkpoints, onDone }: { initi
         <Label>Generator</Label>
         <Chips value={c.generator} onChange={(generator) => set({ generator })} options={GENS} />
       </div>
-      {c.generator !== "anima" && (
+      {hasCheckpoint(c.generator) && (
         <label className="block">
           <Label>Checkpoint (leer = im Formular nicht ändern)</Label>
           <input className="input text-sm" list={`ckpt-${id}`} value={c.checkpoint} onChange={(e) => set({ checkpoint: e.target.value })} />
@@ -121,7 +138,7 @@ function CharacterEditor({ initial, notes, loras, checkpoints, onDone }: { initi
       <div className="space-y-2">
         <Label>LoRAs</Label>
         <datalist id={`loras-${id}`}>
-          {loras.map((x) => (
+          {lorasFor(c.generator).map((x) => (
             <option key={x} value={x} />
           ))}
         </datalist>
@@ -178,7 +195,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
     .filter((c) => matches("characters", c, query))
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
   const available = options?.loras ?? null;
-  const imageLoras = (options?.loras ?? []).filter((l) => loraFits(options?.loraUse?.[l]?.use, "image"));
+  const lorasFor = (g: ImageGenerator) => (options?.loras ?? []).filter((l) => loraFits(options?.loraUse?.[l]?.use, g === "krea2" ? "krea2" : "image"));
 
   const linkFor = (l: CharacterLora) => l.url || links.find(l.name)?.url || null;
 
@@ -205,7 +222,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
   return (
     <div className="space-y-3">
       {editing && !editing.updatedAt ? (
-        <CharacterEditor initial={editing} notes={notes} loras={imageLoras} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />
+        <CharacterEditor initial={editing} notes={notes} lorasFor={lorasFor} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />
       ) : (
         <button type="button" className="btn btn-primary w-full" onClick={() => setEditing(blank())}>
           + Charakter
@@ -222,7 +239,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
       {!list.length && <Empty>{query ? "Nichts gefunden." : "Speichere Charaktere mit Prompt, LoRAs und Modell – ein Tipp setzt alles ins Bild-Formular."}</Empty>}
       {list.map((c) => {
         if (editing?.id === c.id)
-          return <CharacterEditor key={c.id} initial={editing} notes={notes} loras={imageLoras} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />;
+          return <CharacterEditor key={c.id} initial={editing} notes={notes} lorasFor={lorasFor} checkpoints={options?.checkpoints ?? []} onDone={() => setEditing(null)} />;
         const missing = available ? c.loras.filter((l) => !findAvailable(l.name, available)) : [];
         const loadable = missing.filter((l) => linkFor(l) && !dl[l.name]?.ok);
         return (
@@ -236,7 +253,7 @@ export function CharactersTab({ notes, query }: { notes: NotesApi; query: string
             </div>
             <div className="flex flex-wrap gap-1.5">
               <Badge tone="accent">{GENS.find((g) => g.value === c.generator)?.label}</Badge>
-              {c.checkpoint && c.generator !== "anima" && (
+              {c.checkpoint && hasCheckpoint(c.generator) && (
                 <Badge tone={available && options && !options.checkpoints.includes(c.checkpoint) ? "red" : "muted"}>{c.checkpoint.replace(/\.safetensors$/, "")}</Badge>
               )}
             </div>

@@ -11,12 +11,17 @@ let uploads = 0;
 const combo = (values) => [values];
 const NODES = {
   CheckpointLoaderSimple: { ckpt_name: combo(["wai_illustrious_v10.safetensors", "wai_illustrious_v17.safetensors", "ponyDiffusionV6XL.safetensors"]) },
-  LoraLoader: { lora_name: combo((process.env.MOCK_LORAS || "detail_slider.safetensors,style_a.safetensors").split(",")) },
+  LoraLoader: { lora_name: combo((process.env.MOCK_LORAS || "detail_slider.safetensors,style_a.safetensors,krea2_nsfw_v2.safetensors,krea2_turbo_nsfw.safetensors").split(",")) },
+  LoraLoaderModelOnly: {},
   VAELoader: { vae_name: combo(["sdxl_vae.safetensors", "qwen_image_vae.safetensors", "MiniMaxH3/minimax_h3_video_vae_fp16.safetensors", "MiniMaxH3/minimax_h3_audio_vae_fp32.safetensors"]) },
   UpscaleModelLoader: { model_name: combo(["4x_foolhardy_Remacri.pth", "4x-UltraSharp.pth"]) },
   KSampler: { sampler_name: combo(["euler", "euler_ancestral", "dpmpp_2m"]), scheduler: combo(["normal", "karras", "simple"]) },
-  UNETLoader: { unet_name: combo(["anima-base-v1.0.safetensors", "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"]) },
-  CLIPLoader: { clip_name: combo(["qwen_3_06b_base.safetensors", "qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"]) },
+  UNETLoader: { unet_name: combo(["anima-base-v1.0.safetensors", "krea2_turbo_fp8_scaled.safetensors", "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"]) },
+  CLIPLoader: {
+    clip_name: combo(["qwen_3_06b_base.safetensors", "qwen3vl_4b_fp8_scaled.safetensors", "qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"]),
+    // MOCK_OLD_COMFY=1: ComfyUI ohne Krea-2-Unterstützung
+    type: combo(["stable_diffusion", "qwen_image", ...(process.env.MOCK_OLD_COMFY ? [] : ["krea2"])]),
+  },
   KSamplerSelect: { sampler_name: combo(["euler", "res_multistep"]) },
   BasicScheduler: { scheduler: combo(["normal", "simple", "beta"]) },
   ModelSamplingAuraFlow: {},
@@ -36,7 +41,7 @@ const KNOWN = new Set([
   ...Object.keys(NODES),
   "CLIPTextEncode", "EmptyLatentImage", "EmptySD3LatentImage", "VAEDecode", "VAEEncode", "ImageScale", "SaveImage", "ImageUpscaleWithModel",
   "CLIPSetLastLayer", "ModelSamplingSD3", "FrameInterpolate", "ModelAttentionBackend", "ComfyMathExpression", "ModelPatchTorchSettings",
-  "VAEDecodeAudio", "BasicGuider", "SamplerCustomAdvanced",
+  "VAEDecodeAudio", "BasicGuider", "SamplerCustomAdvanced", "ConditioningZeroOut",
 ]);
 
 // 1×1-PNG (lila)
@@ -173,7 +178,9 @@ const json = (res, data, status = 200) => {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const p = url.pathname;
-  if (p === "/system_stats") return json(res, { system: { comfyui_version: "mock-0.3", python_version: "3.12", pytorch_version: "2.9", ram_total: 64e9, ram_free: 40e9 }, devices: [{ name: "cuda:0 NVIDIA GeForce RTX 5090 (Mock)", type: "cuda", vram_total: 32e9, vram_free: 20e9 }] });
+  // MOCK_SAGE=1: wie „start_comfy.sh bild sage“ (Krea 2 warnt dann vor schwarzen Bildern)
+  const argv = ["main.py", "--listen", "0.0.0.0", "--port", String(PORT), ...(process.env.MOCK_SAGE ? ["--use-sage-attention"] : [])];
+  if (p === "/system_stats") return json(res, { system: { comfyui_version: "mock-0.3", python_version: "3.12", pytorch_version: "2.9", ram_total: 64e9, ram_free: 40e9, argv }, devices: [{ name: "cuda:0 NVIDIA GeForce RTX 5090 (Mock)", type: "cuda", vram_total: 32e9, vram_free: 20e9 }] });
   if (p.startsWith("/object_info/")) {
     const cls = decodeURIComponent(p.slice("/object_info/".length));
     return json(res, NODES[cls] ? { [cls]: { input: { required: NODES[cls] } } } : {});

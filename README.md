@@ -2,7 +2,7 @@
 
 Mobile Web-App (Next.js) für ComfyUI. Läuft direkt auf dem GPU-Pod (Vast.ai / RunPod) neben ComfyUI und ist über einen Cloudflare Tunnel unter **https://comfy.comfyusel.uk** erreichbar.
 
-- **Bild:** WAI / Pony / Anima, bedient wie TensorHub Text2Img, Einzel- und Batch-Prompts (200+ Blöcke, alle sofort serverseitig in der Queue)
+- **Bild:** WAI / Pony / Anima / Krea 2 Turbo, bedient wie TensorHub Text2Img, Einzel- und Batch-Prompts (200+ Blöcke, alle sofort serverseitig in der Queue)
 - **Video:** MiniMax H3 (DaSiWa-Director), Prompt-Blöcke, Referenzbilder und Audio
 - **Warteschlange, Galerie, Einstellungen**, Login mit einem Passwort, als PWA installierbar
 
@@ -38,7 +38,7 @@ Das ist `GH_TOKEN`.
 |---|---|---|
 | `APP_PASSWORD` | ja | Login-Passwort der App |
 | `CIVITAI_TOKEN` | ja | Civitai-API-Token für die Modell-Downloads |
-| `HF_TOKEN` | für `video` | Hugging-Face-Token für die H3-Modelle |
+| `HF_TOKEN` | für `video` | Hugging-Face-Token für die H3-Modelle (Krea 2 lädt auch ohne) |
 | `GH_TOKEN` | ja (privates Repo) | Read-only-Token aus Schritt 2 |
 | `CF_TUNNEL_TOKEN` | empfohlen | Tunnel-Token aus Schritt 1. Fehlt er, startet ein Quick Tunnel mit zufälliger `trycloudflare.com`-Adresse |
 | `DISCORD_WEBHOOK_URL` | nein | Schickt „Pod bereit: …“ plus GPU-Name, sobald alles läuft (beim Quick Tunnel mit der zufälligen Adresse) |
@@ -52,7 +52,7 @@ Das ist `GH_TOKEN`.
 
 | Modus | Inhalt |
 |---|---|
-| `bilder` | Inspire Pack, Impact Pack + Subpack (ADetailer), WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Remacri, Bild-LoRAs |
+| `bilder` | Inspire Pack, Impact Pack + Subpack (ADetailer), WAI v10/v17, Aniverse Pony, Pony V6, Nova 3DCG, Illu-Merge, Anima (+ Turbo, Encoder, VAE), Krea 2 Turbo (+ Encoder, 2 LoRAs), Remacri, Bild-LoRAs |
 | `video` | MiniMax H3 Singularity: ComfyUI-Update, Custom Nodes (DaSiWa, KJNodes, VHS …), DiT, Text-Encoder, VAEs, TAE, RIFE, H3-LoRAs, x264-Patch |
 | `alles` | beides |
 

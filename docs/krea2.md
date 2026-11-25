@@ -3,8 +3,12 @@
 Stand: 2026-11-25. Ergänzt CLAUDE.md. Krea 2 kommt als **vierte Option im Bild-Umschalter**
 (WAI / Pony / Anima / Krea 2), kein eigener Tab.
 
-**Start erst, wenn `workflows/workflow_KREA2_Turbo.json` im Repo liegt** (vom Nutzer exportiert:
-Template `image_krea2_turbo_t2i.json` laden → „Unpack Subgraph“ → „Export (API)“).
+**Workflow:** `workflows/workflow_KREA2_Turbo.json` ist **von Hand aus dem offiziellen Template**
+`image_krea2_turbo_t2i.json` (Comfy-Org/workflow_templates) übertragen, nicht vom Pod exportiert:
+Subgraph aufgelöst, Prompt-Verbesserung (TextGenerate), Schalter und Stil-LoRA weggelassen,
+Hires-Nodes im Layout der TensorHub-Templates ergänzt. Der erste Lauf auf dem Pod ist damit
+auch die Probe für die Widget-Namen (`weight_dtype`, `device`). Die Prompt-Verbesserung des
+Templates läuft lokal mit dem Text-Encoder – Kandidat für eine spätere Prompt-Hilfe ohne API.
 
 ---
 
@@ -55,11 +59,11 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 ### Weitere Funktionen in v1
 
 - Anzahl Bilder 1–4: ja
-- Hires/Hochskalieren: ja. Das Krea-Template hat keine Hires-Nodes, der **Builder fügt sie selbst
-  ein** (eigene IDs ab `940`, analog zu WAI `40`, `41`, `11`–`14`; Lanczos ohne Modell wie bei WAI).
+- Hires/Hochskalieren: ja. Die Nodes `40`, `41`, `11`–`14` stecken wie bei WAI/Anima schon im
+  Template, `applyUpscale` wird wiederverwendet (Lanczos ohne Modell wie bei WAI).
   - Standardwerte für den zweiten Durchgang: 4 Schritte, CFG 1, Denoise 0.3, euler/simple,
     Faktor 1.5x, Hochskalierer 4x_foolhardy_Remacri. Gegen den Pod prüfen, ggf. anpassen.
-  - Zielgröße auf **Vielfache von 16** runden (nicht 8 wie `scaledSize` bisher).
+  - Zielgröße auf **Vielfache von 16** runden (nicht 8 wie bei WAI/Anima).
 - ADetailer: nein (Schalter im Krea-Modus ausblenden)
 - Clip Skip: nein
 
@@ -70,7 +74,8 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
   eigene Funktion oder Parameter für „nur Modell“.
 - Neue LoRA-Klasse **`krea2`** in `lib/loraKinds.ts`:
   - Im Krea-Modus nur Krea-LoRAs anzeigen, alle anderen ausblenden. Im WAI/Pony/Anima-Modus
-    Krea-LoRAs ausblenden.
+    Krea-LoRAs ausblenden. Noch **nicht zugeordnete** LoRAs stehen wie bisher in allen Listen
+    (Hinweis mit Link „Sortieren“), „Bild + Video“ gilt nicht für Krea 2.
   - Automatische Erkennung: Dateiname enthält `krea` → `krea2`.
   - `guessUseFromBaseModel` und `civitaiType` (`lib/modelLinks.ts`) kennen „krea“
     (Krea-„Checkpoints“ von Civitai → `diffusion_models`).
@@ -120,17 +125,15 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 - Krea-Dateien bei `bilder` laden (UNet, Text-Encoder, VAE ist schon da) + LoRAs
   `krea2_nsfw_v2` (Version 3065362) und `krea2_turbo_nsfw` (Version 3081369) über `$CIVITAI_TOKEN`.
 - Speicherbedarf für `bilder` erhöhen (Vorschlag: +20 GB, die drei Dateien sind zusammen ca. 17 GB).
-- `HF_TOKEN` bleibt **optional** bei `bilder` (keine Pflicht, bestehende Templates laufen weiter).
-  Ist er gesetzt, wird er für die Krea-Downloads von Hugging Face mitgeschickt; fehlt er, wird
-  ohne Token versucht und bei Fehlschlag gemeldet („Krea 2: HF_TOKEN im Pod-Template eintragen“).
-  Der Token gehört ins Pod-Template, **nie ins Repo**.
+- `HF_TOKEN` bleibt **optional** bei `bilder`. Das Repo Comfy-Org/Krea-2 ist öffentlich (lädt ohne
+  Token); ist er gesetzt, wird er mitgeschickt. Tokens gehören ins Pod-Template, **nie ins Repo**.
 - CHECKS-Block: `CLIPLoader`-Typ `krea2` prüfen und melden.
 - Krea-Dateien in „Modelle laden“ / `model-links` aufnehmen, damit sie auf frischen Pods per
   Tipp nachladbar sind.
 
 ## 7. Entschieden (2026-11-25)
 
-- Hires: Builder fügt die Nodes ein, Werte siehe Abschnitt 2.
+- Hires: Nodes im Template (gleiche IDs wie WAI/Anima), Werte siehe Abschnitt 2.
 - `HF_TOKEN`: optional, nur für die Krea-Downloads genutzt.
 - Prompt-Warnungen: keine.
 

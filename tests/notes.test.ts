@@ -98,7 +98,9 @@ describe("Notiz-Speicher", () => {
     await saveModelLinks([{ filename: "Ahri.safetensors", type: "lora", url: "https://civitai.red/api/download/models/9?fileId=1&token=geheim" }]);
     await saveModelLinks([{ filename: "kaputt.safetensors", type: "quatsch", url: "https://x.y/z" }]);
     const links = await getModelLinks();
-    expect(Object.keys(links)).toEqual(["Ahri.safetensors"]);
+    // fest hinterlegte Krea-2-Links (savedAt 0) sind immer dabei, gespeichert wird nur der gültige
+    expect(Object.keys(links).filter((k) => links[k].savedAt !== 0)).toEqual(["Ahri.safetensors"]);
+    expect(links["krea2_turbo_fp8_scaled.safetensors"]?.type).toBe("unet");
     expect(findLink(links, "pony/ahri.safetensors")?.url).toBe("https://civitai.red/api/download/models/9?fileId=1");
   });
 });

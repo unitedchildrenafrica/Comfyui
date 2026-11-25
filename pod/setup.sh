@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Komplett-Setup für einen neuen Vast.ai-Pod (ComfyUI-Template).
 #
-#   bash setup.sh bilder   WAI/Pony/Anima: Checkpoints, Anima, LoRAs, Remacri, Inspire Pack
+#   bash setup.sh bilder   WAI/Pony/Anima/Krea 2: Checkpoints, Anima, Krea 2, LoRAs, Remacri, Inspire Pack
 #   bash setup.sh video    MiniMax H3 Singularity: Custom Nodes, Modelle, LoRAs
 #   bash setup.sh alles    beides
 #
@@ -11,7 +11,7 @@
 #
 # Env (im Pod-Template):
 #   CIVITAI_TOKEN   Pflicht (bilder + video)
-#   HF_TOKEN        Pflicht für video
+#   HF_TOKEN        Pflicht für video (bei bilder optional – Krea 2 lädt auch ohne)
 #   GH_TOKEN, APP_PASSWORD, CF_TUNNEL_TOKEN   fürs Frontend (siehe start-frontend.sh)
 #   VPS_URL, POD_SECRET   Server-Modus: Pod meldet sich beim eigenen Server an (statt eigener App/Tunnel)
 #   DISCORD_WEBHOOK_URL   optional
@@ -81,7 +81,8 @@ if [ -n "$Q" ] && [ "${Q%% *}" != "max" ]; then VCPU=$(( ${Q%% *} / ${Q##* } ));
 THREADS=$(( VCPU > 2 ? VCPU - 1 : 1 ))
 echo ">> Modus $MODE | vCPUs $VCPU → Threads $THREADS"
 
-NEED=55; want video && NEED=90; [ "$MODE" = alles ] && NEED=140
+# bilder inkl. Krea 2 (~17 GB: UNet 12,2 + Text-Encoder 4,9)
+NEED=75; want video && NEED=90; [ "$MODE" = alles ] && NEED=160
 FREE=$(df -BG --output=avail /workspace | tail -1 | tr -dc 0-9)
 if [ "${FREE:-0}" -lt "$NEED" ]; then
   echo "!! Nur ${FREE} GB frei auf /workspace – für '$MODE' ca. $NEED GB nötig (bei schon geladenen Modellen harmlos)"
@@ -97,8 +98,8 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq && apt-get install -y -qq aria2 ffmpeg git zip >/dev/null
 if [ ! -f "$C/main.py" ]; then
   git clone -q https://github.com/comfyanonymous/ComfyUI.git "$C" || { echo "!! ComfyUI-Klon fehlgeschlagen"; exit 1; }
-elif want video; then
-  # H3 braucht das aktuelle ComfyUI
+else
+  # H3 und Krea 2 (CLIPLoader-Typ „krea2“) brauchen das aktuelle ComfyUI
   git -C "$C" fetch origin -q && git -C "$C" reset --hard origin/master -q &&
     git -C "$C" branch --set-upstream-to=origin/master master >/dev/null 2>&1
 fi
@@ -150,6 +151,8 @@ fi
 # --- Download-Helfer -----------------------------------------------------------------
 CV="https://civitai.red/api/download/models"
 HFH=(--header="Authorization: Bearer ${HF_TOKEN:-}")
+# Öffentliche HF-Repos (Krea 2): Token nur mitschicken, wenn gesetzt
+HFO=(); [ -n "${HF_TOKEN:-}" ] && HFO=("${HFH[@]}")
 
 small() { [ "$(stat -c %s "$1" 2>/dev/null || echo 0)" -lt 1000000 ]; }
 
@@ -218,6 +221,16 @@ if want bilder; then
   WL="$C/user/default/ComfyUI-Impact-Subpack/model-whitelist.txt"
   mkdir -p "$(dirname "$WL")"
   for f in face_yolov8m.pt hand_yolov8s.pt; do grep -qx "$f" "$WL" 2>/dev/null || echo "$f" >> "$WL"; done
+
+  step "6e. Bilder: Krea 2 Turbo"
+  # Öffentliches Repo (Comfy-Org/Krea-2), VAE ist dieselbe wie bei Anima (oben schon geladen)
+  KR=https://huggingface.co/Comfy-Org/Krea-2/resolve/main
+  dl "$KR/diffusion_models/krea2_turbo_fp8_scaled.safetensors" "$M/diffusion_models" krea2_turbo_fp8_scaled.safetensors "${HFO[@]}"
+  dl "$KR/text_encoders/qwen3vl_4b_fp8_scaled.safetensors" "$M/text_encoders" qwen3vl_4b_fp8_scaled.safetensors "${HFO[@]}"
+  [ -s "$M/vae/qwen_image_vae.safetensors" ] || dl "$KR/vae/qwen_image_vae.safetensors" "$M/vae" qwen_image_vae.safetensors "${HFO[@]}"
+  civ "3065362?type=Model" "$M/loras" krea2_nsfw_v2.safetensors
+  civ "3081369?type=Model" "$M/loras" krea2_turbo_nsfw.safetensors
+  # krea2_aio_nsfw.safetensors (HearmemanAI, Modell 2732306): noch keine Versions-ID – von Hand laden
 fi
 
 if want video; then
@@ -323,6 +336,8 @@ if want bilder; then
   has FaceDetailer FaceDetailer && echo "OK  ADetailer (Impact Pack)" || FAIL+=("Impact Pack (ADetailer)")
   if has UltralyticsDetectorProvider face_yolov8m.pt; then echo "OK  ADetailer-Erkennung (Impact Subpack)"
   else FAIL+=("Impact Subpack / face_yolov8m.pt (ADetailer)"); fi
+  if has CLIPLoader krea2; then echo "OK  CLIPLoader-Typ krea2 (Krea 2)"
+  else FAIL+=("CLIPLoader-Typ krea2 fehlt – ComfyUI zu alt für Krea 2"); fi
   if has ModelSamplingAuraFlow ModelSamplingAuraFlow; then echo "OK  ModelSamplingAuraFlow (Anima Shift)"
   else echo "--  ModelSamplingAuraFlow fehlt (App nutzt dann ModelSamplingSD3)"; fi
   echo "-- Checkpoints:"; ls -lh "$M"/checkpoints/*.safetensors 2>/dev/null | awk '{print "   "$5"\t"$9}'

@@ -1,5 +1,6 @@
 import { classifyLora, type LoraUse } from "../loraKinds";
-import { comboValues, getNodeInfo } from "./comfy";
+import { krea2StartupWarning } from "../krea2";
+import { comboValues, comfyJson, getNodeInfo } from "./comfy";
 import { withRole } from "./podLink";
 import { getLoraOverrides } from "./loraKinds";
 
@@ -42,6 +43,14 @@ export interface Options {
     faceDetailer: boolean;
     shiftNode: "ModelSamplingAuraFlow" | "ModelSamplingSD3" | null;
   };
+  /** Krea 2 (Bild-Pod) */
+  krea2: {
+    /** Werte von CLIPLoader.type – „krea2“ muss dabei sein */
+    clipTypes: string[];
+    modelOnlyLoras: boolean;
+    /** Warnung, wenn ComfyUI mit SageAttention / --fast läuft (schwarze Bilder) */
+    startupWarning: string | null;
+  };
 }
 
 const IMAGE_NODES = [
@@ -56,6 +65,7 @@ const IMAGE_NODES = [
   "UltralyticsDetectorProvider",
   "ModelSamplingAuraFlow",
   "ModelSamplingSD3",
+  "LoraLoaderModelOnly",
 ];
 const VIDEO_NODES = [
   "UNETLoader",
@@ -78,7 +88,13 @@ async function infos(names: string[]) {
  * Listen vom Bild-Pod und die Video-Listen vom Video-Pod; bei einem Pod ist es derselbe.
  */
 export async function getOptions(): Promise<Options> {
-  const [info, vid] = await Promise.all([withRole("bild", () => infos(IMAGE_NODES)), withRole("video", () => infos(VIDEO_NODES))]);
+  const [info, vid, argv] = await Promise.all([
+    withRole("bild", () => infos(IMAGE_NODES)),
+    withRole("video", () => infos(VIDEO_NODES)),
+    withRole("bild", () => comfyJson<{ system?: { argv?: unknown } }>("/system_stats", { timeoutMs: 5000 }))
+      .then((s) => s.system?.argv)
+      .catch(() => null),
+  ]);
   const loras = comboValues(info.LoraLoader, "lora_name");
   const videoLoras = comboValues(vid.LoraLoader, "lora_name");
   const overrides = await getLoraOverrides();
@@ -109,6 +125,11 @@ export async function getOptions(): Promise<Options> {
       // braucht Impact Pack (FaceDetailer) und Impact Subpack (Erkennung)
       faceDetailer: !!info.FaceDetailer && !!info.UltralyticsDetectorProvider,
       shiftNode: info.ModelSamplingAuraFlow ? "ModelSamplingAuraFlow" : info.ModelSamplingSD3 ? "ModelSamplingSD3" : null,
+    },
+    krea2: {
+      clipTypes: comboValues(info.CLIPLoader, "type"),
+      modelOnlyLoras: !!info.LoraLoaderModelOnly,
+      startupWarning: krea2StartupWarning(argv),
     },
   };
 }

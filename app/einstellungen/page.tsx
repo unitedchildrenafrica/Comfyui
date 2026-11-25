@@ -117,8 +117,8 @@ export default function SettingsPage() {
       {app && (
         <section className="card space-y-3 p-4">
           <h2 className="font-semibold">Standards</h2>
-          <div className="grid grid-cols-3 gap-2">
-            {(["wai", "pony", "anima"] as const).map((g) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(["wai", "pony", "anima", "krea2"] as const).map((g) => (
               <Field key={g} label={`Ordner ${g}`}>
                 <input className="input" value={app.folders[g]} onChange={(e) => setApp({ ...app, folders: { ...app.folders, [g]: e.target.value } })} />
               </Field>

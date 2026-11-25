@@ -99,12 +99,12 @@ export async function deletePreset(name: string) {
 // --- App-Einstellungen --------------------------------------------------------------
 
 export interface AppSettings {
-  folders: { wai: string; pony: string; anima: string };
+  folders: { wai: string; pony: string; anima: string; krea2: string };
   defaultNegative: string;
 }
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
-  folders: { wai: "wai", pony: "pony", anima: "anima" },
+  folders: { wai: "wai", pony: "pony", anima: "anima", krea2: "krea2" },
   defaultNegative: DEFAULT_NEGATIVE,
 };
 

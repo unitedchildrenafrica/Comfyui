@@ -55,8 +55,9 @@ export function roundTo(value: number, multiple: number): number {
   return Math.max(multiple, Math.round(value / multiple) * multiple);
 }
 
-export function scaledSize(width: number, height: number, factor: number) {
-  return { width: roundTo(width * factor, 8), height: roundTo(height * factor, 8) };
+/** Hires-Zielgröße. WAI/Pony/Anima runden auf 8, Krea 2 auf 16. */
+export function scaledSize(width: number, height: number, factor: number, multiple = 8) {
+  return { width: roundTo(width * factor, multiple), height: roundTo(height * factor, multiple) };
 }
 
 const SEGMENT = /^[A-Za-z0-9_\-.]+$/;
