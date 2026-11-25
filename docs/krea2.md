@@ -55,7 +55,11 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 ### Weitere Funktionen in v1
 
 - Anzahl Bilder 1–4: ja
-- Hires/Hochskalieren: ja (siehe Abschnitt 5, offene Punkte)
+- Hires/Hochskalieren: ja. Das Krea-Template hat keine Hires-Nodes, der **Builder fügt sie selbst
+  ein** (eigene IDs ab `940`, analog zu WAI `40`, `41`, `11`–`14`; Lanczos ohne Modell wie bei WAI).
+  - Standardwerte für den zweiten Durchgang: 4 Schritte, CFG 1, Denoise 0.3, euler/simple,
+    Faktor 1.5x, Hochskalierer 4x_foolhardy_Remacri. Gegen den Pod prüfen, ggf. anpassen.
+  - Zielgröße auf **Vielfache von 16** runden (nicht 8 wie `scaledSize` bisher).
 - ADetailer: nein (Schalter im Krea-Modus ausblenden)
 - Clip Skip: nein
 
@@ -88,12 +92,7 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 ## 4. Prompts
 
 - Kein Negativ-Feld im Krea-Modus.
-- **Keine LLM-Prompt-Hilfe in v1.**
-- Prüfhilfe (nur Warnungen, wie bei H3) bei selbst getippten Prompts und Batch-Blöcken:
-  - „full body“
-  - Schuhe/Stiefel/Absätze: shoes, boots, heels, high heels, sneakers, sandals, …
-  - „biting lip“, „lip biting“, „bites lip“
-  - „toned stomach“
+- **Keine LLM-Prompt-Hilfe und keine Prompt-Warnungen in v1.**
 - Batch: gleiches Format wie WAI (`positive:` / `name:` / `---`). `negative:`-Zeilen werden
   **ignoriert** und einmal als Hinweis angezeigt („Negativ-Prompts werden bei Krea 2 ignoriert“),
   kein Fehler. Jeder Block ein eigener `/prompt`-Job, alle sofort serverseitig eingereiht.
@@ -121,25 +120,19 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 - Krea-Dateien bei `bilder` laden (UNet, Text-Encoder, VAE ist schon da) + LoRAs
   `krea2_nsfw_v2` (Version 3065362) und `krea2_turbo_nsfw` (Version 3081369) über `$CIVITAI_TOKEN`.
 - Speicherbedarf für `bilder` erhöhen (Vorschlag: +20 GB, die drei Dateien sind zusammen ca. 17 GB).
-- `HF_TOKEN` bei `bilder`: siehe offene Punkte.
+- `HF_TOKEN` bleibt **optional** bei `bilder` (keine Pflicht, bestehende Templates laufen weiter).
+  Ist er gesetzt, wird er für die Krea-Downloads von Hugging Face mitgeschickt; fehlt er, wird
+  ohne Token versucht und bei Fehlschlag gemeldet („Krea 2: HF_TOKEN im Pod-Template eintragen“).
+  Der Token gehört ins Pod-Template, **nie ins Repo**.
 - CHECKS-Block: `CLIPLoader`-Typ `krea2` prüfen und melden.
 - Krea-Dateien in „Modelle laden“ / `model-links` aufnehmen, damit sie auf frischen Pods per
   Tipp nachladbar sind.
 
-## 7. Offene Punkte (vor dem Bauen klären)
+## 7. Entschieden (2026-11-25)
 
-1. **Hires-Nodes fehlen im Krea-Template.** Bei WAI/Anima sind die Nodes `40`, `41`, `11`–`14`
-   schon im Export, `applyUpscale` entfernt sie nur. Das offizielle Krea-Template hat sie nicht.
-   Entweder der Builder fügt sie selbst ein (eigene IDs, z. B. `940`–`944`), oder der Nutzer baut
-   sie vor dem Export in ComfyUI ein. Vorschlag: Builder fügt ein.
-2. **Hires-Standardwerte für Turbo:** WAI-Werte (15 Schritte, Denoise 0.35, CFG 6) passen nicht zu
-   einem 8-Step-Modell mit CFG 1. Vorschlag: 4 Schritte, CFG 1, Denoise 0.3, gegen den Pod testen.
-3. **Hires-Zielgröße auf 16 runden**, nicht auf 8 wie `scaledSize` bisher.
-4. **`HF_TOKEN` als Pflicht bei `bilder`** würde bestehende Bild-Pod-Templates ohne Token beim
-   Setup abbrechen lassen. Vorschlag: nur Pflicht, wenn das HF-Repo wirklich einen Login braucht;
-   sonst optional mitschicken, wenn gesetzt.
-5. **Geltungsbereich der Prompt-Warnungen:** nur Krea 2 oder alle Bildmodelle? Bei WAI/Pony ist
-   z. B. „full body“ ein normaler Danbooru-Tag.
+- Hires: Builder fügt die Nodes ein, Werte siehe Abschnitt 2.
+- `HF_TOKEN`: optional, nur für die Krea-Downloads genutzt.
+- Prompt-Warnungen: keine.
 
 ---
 
@@ -157,6 +150,5 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 9. Falsche Datei vorwählen (UNet umbenennen oder anderes wählen) → „Datei fehlt“ vor dem Start.
 10. ComfyUI mit `bash /workspace/start_comfy.sh bild sage` starten → Warnung zu den Startparametern.
 11. Batch mit 3 Blöcken, einer davon mit `negative:` → Hinweis, 3 Jobs, „3 / 3 fertig“.
-12. Prompt mit „full body, high heels“ → Warnungen erscheinen, Start bleibt möglich.
-13. Galerie: Krea-Bild → „Einstellungen übernehmen“ stellt Krea-Formular inkl. LoRAs wieder her.
-14. H3-Video einmal starten (auf `alles`-Pod oder Video-Pod) → läuft unverändert.
+12. Galerie: Krea-Bild → „Einstellungen übernehmen“ stellt Krea-Formular inkl. LoRAs wieder her.
+13. H3-Video einmal starten (auf `alles`-Pod oder Video-Pod) → läuft unverändert.
