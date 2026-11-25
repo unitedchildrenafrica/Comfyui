@@ -276,6 +276,11 @@ export async function forgetMirroredMany(list: { subfolder: string; filename: st
   saveSoon();
 }
 
+/** prompt_ids, deren Ausgaben fertig vom Pod kopiert wurden (die letzten 5000) – bleibt beim Löschen erhalten */
+export async function mirroredPromptIds(): Promise<Set<string>> {
+  return new Set((await index()).prompts);
+}
+
 /** Vermerke „gelöscht“ (Schlüssel → Zeitpunkt) für die Galerie */
 export async function deletedMap(): Promise<Record<string, number>> {
   return (await index()).deletedAt ?? {};

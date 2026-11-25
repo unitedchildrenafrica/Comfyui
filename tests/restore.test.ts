@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { builtinPresets } from "@/lib/defaults";
-import { groupSets as groupLite, jobModels, remapJobModels, summarizeJob, type ModelLists } from "@/lib/restore";
+import { dedupeJobs, groupSets as groupLite, jobModels, remapJobModels, summarizeJob, type ModelLists } from "@/lib/restore";
 import type { H3Settings, ImageSettings, JobRecord } from "@/lib/types";
 
 const base = Object.values(builtinPresets())[0] as ImageSettings;
@@ -129,5 +129,45 @@ describe("remapJobModels", () => {
     const s = { ditModel: "h3.safetensors", textEncoder: "te.safetensors", loras: [] } as unknown as H3Settings;
     const { missing } = remapJobModels(job({ kind: "video", generator: "h3", settings: s }) as JobRecord & { settings: H3Settings }, lists);
     expect(missing).toEqual([]);
+  });
+});
+
+describe("Jedes Bild nur einmal", () => {
+  // derselbe 3er-Batch dreimal abgeschickt: A abgebrochen (nur 1 fertig), B komplett fertig, C neuester, nie gelaufen
+  const run = (batchId: string, t: number) =>
+    [0, 1, 2].map((i) => job({ batchId, index: i, label: `bild_${i}`, createdAt: t + i, prompt: { positive: `p${i}`, negative: "", name: `bild_${i}` } }));
+  const A = run("A", 1000);
+  const B = run("B", 2000);
+  const C = run("C", 3000);
+  const lites = [...A, ...B, ...C].map(summarizeJob);
+
+  it("nimmt die Version, die damals fertig wurde", () => {
+    const finished = new Set([A[0].promptId, ...B.map((j) => j.promptId)]);
+    const keep = dedupeJobs(lites, finished);
+    expect([...keep].sort()).toEqual(B.map((j) => j.promptId).sort());
+  });
+
+  it("ohne Wissen über „fertig“: die neueste", () => {
+    expect([...dedupeJobs(lites, null)].sort()).toEqual(C.map((j) => j.promptId).sort());
+  });
+
+  it("andere Ordner und Einzelbilder bleiben getrennt", () => {
+    const other = job({ batchId: "D", label: "bild_0", settings: img({ folder: "anderer" }) });
+    const single1 = job({ label: "bild" });
+    const single2 = job({ label: "bild" });
+    const keep = dedupeJobs([...lites, other, single1, single2].map((j) => ("outputKey" in j ? j : summarizeJob(j))), null);
+    expect(keep.has(other.promptId)).toBe(true);
+    expect(keep.has(single1.promptId) && keep.has(single2.promptId)).toBe(true);
+  });
+
+  it("zählt fertig gewordene pro Set", () => {
+    const finished = new Set([A[0].promptId, ...B.map((j) => j.promptId)]);
+    const sets = groupLite(lites, new Set(), 0, finished);
+    expect(sets.map((x) => [x.key, x.finished])).toEqual([
+      ["b:C", 0],
+      ["b:B", 3],
+      ["b:A", 1],
+    ]);
+    expect(groupLite(lites, new Set(), 0, null)[0].finished).toBeNull();
   });
 });

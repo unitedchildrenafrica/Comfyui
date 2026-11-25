@@ -33,6 +33,8 @@ export interface RestoreSet {
   perJob: number;
   /** Jobs, von denen noch Dateien in der Galerie sind */
   present: number;
+  /** Jobs, die damals fertig wurden (vom Pod kopiert). null = unbekannt (kein Server-Modus) */
+  finished: number | null;
   /** Jobs, die schon einmal neu gestartet wurden */
   restored: number;
   preview: string;
@@ -138,6 +140,17 @@ export interface JobLite {
   perJob: number;
   preview: string;
   models: ModelNeed[];
+  /** gleiche Ausgabedatei = gleicher Schlüssel (siehe outputKey) */
+  outputKey: string;
+}
+
+/**
+ * Welche Datei ein Job erzeugt: Batch-Jobs schreiben nach „<Ordner>/<Name>“ – wurde derselbe Batch
+ * mehrmals abgeschickt (abgebrochen und neu gestartet), haben die Kopien denselben Schlüssel.
+ * Einzelbilder heißen alle „bild“ und werden nie zusammengefasst.
+ */
+export function outputKey(job: Pick<JobRecord, "promptId" | "batchId" | "kind" | "label">, folder: string): string {
+  return job.batchId ? `${job.kind}|${folder}|${job.label}` : `job|${job.promptId}`;
 }
 
 export function summarizeJob(job: JobRecord): JobLite {
@@ -156,7 +169,22 @@ export function summarizeJob(job: JobRecord): JobLite {
     perJob: img ? Math.max(1, img.batchSize || 1) : 1,
     preview: preview.slice(0, 300),
     models: jobModels(job),
+    outputKey: outputKey(job, jobFolder(job)),
   };
+}
+
+/**
+ * Jede Ausgabedatei nur einmal: aus mehreren Jobs mit gleichem outputKey den nehmen, der damals
+ * fertig wurde, sonst den neuesten. Liefert die prompt_ids, die bleiben.
+ */
+export function dedupeJobs(jobs: Pick<JobLite, "promptId" | "outputKey" | "createdAt">[], finished: Set<string> | null): Set<string> {
+  const best = new Map<string, (typeof jobs)[number]>();
+  const score = (j: (typeof jobs)[number]) => (finished?.has(j.promptId) ? 1 : 0);
+  for (const j of jobs) {
+    const cur = best.get(j.outputKey);
+    if (!cur || score(j) > score(cur) || (score(j) === score(cur) && j.createdAt > cur.createdAt)) best.set(j.outputKey, j);
+  }
+  return new Set([...best.values()].map((j) => j.promptId));
 }
 
 /** Schlüssel des Sets, zu dem ein Job gehört: Batch, sonst Einzelbilder je Ordner und Tag */
@@ -173,7 +201,7 @@ export const MAX_NAMES = 60;
  * Jobs zu Sets zusammenfassen, neueste zuerst. present = prompt_ids mit Dateien in der Galerie.
  * Neu gestartete Jobs (restoredFrom) zählen beim Original als „schon neu gestartet“.
  */
-export function groupSets(jobs: JobLite[], present: Set<string>, tzOffsetMin = 0): (Omit<RestoreSet, "models"> & { needs: ModelNeed[]; promptIds: string[] })[] {
+export function groupSets(jobs: JobLite[], present: Set<string>, tzOffsetMin = 0, finished: Set<string> | null = null): (Omit<RestoreSet, "models"> & { needs: ModelNeed[]; promptIds: string[] })[] {
   const restoredFrom = new Set(jobs.map((j) => j.restoredFrom).filter(Boolean) as string[]);
   // Neu gestartete Kopien nicht als eigenes Set zeigen, solange das Original da ist –
   // sonst stehen sie während der Queue als „gelöscht“ da und werden doppelt gestartet
@@ -198,6 +226,7 @@ export function groupSets(jobs: JobLite[], present: Set<string>, tzOffsetMin = 0
         jobs: list.length,
         perJob: first.perJob,
         present: list.filter((j) => present.has(j.promptId)).length,
+        finished: finished ? list.filter((j) => finished.has(j.promptId) || present.has(j.promptId)).length : null,
         restored: list.filter((j) => restoredFrom.has(j.promptId)).length,
         preview: first.preview,
         names: list.slice(0, MAX_NAMES).map((j) => j.label),

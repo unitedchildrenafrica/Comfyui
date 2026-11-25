@@ -12,6 +12,7 @@ const PAGE = 15;
 
 interface SubmitResult {
   promptIds: string[];
+  skipped?: number;
   failed: { name: string; error: string }[];
 }
 
@@ -38,6 +39,9 @@ export default function RestorePage() {
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState("");
   const [onlyDeleted, setOnlyDeleted] = useState(true);
+  /** jede Ausgabedatei nur einmal (Batch mehrmals abgeschickt) */
+  const [dedupe, setDedupe] = useState(true);
+  const [plan, setPlan] = useState<{ jobs: number; skipped: number } | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null);
@@ -96,15 +100,27 @@ export default function RestorePage() {
     }
   };
 
+  // Wie viele Jobs wirklich starten (doppelte Bilder raus) – vom Server zählen lassen
+  const selKey = [...selected].sort().join(",");
+  useEffect(() => {
+    setPlan(null);
+    if (!selKey) return;
+    const t = setTimeout(() => {
+      api<{ jobs: number; skipped: number }>("/api/restore", { method: "POST", json: { keys: selKey.split(","), tz, dedupe, dryRun: true } }).then(setPlan, () => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [selKey, dedupe, tz]);
+  const jobsToRun = plan?.jobs ?? chosenJobs;
+
   const start = async () => {
     if (!chosen.length) return;
-    const what = hasVideo && chosen.every((s) => s.kind === "video") ? count({ kind: "video", jobs: 1, perJob: chosenFiles }) : hasVideo ? `${chosenJobs} Jobs` : count({ kind: "image", jobs: 1, perJob: chosenFiles });
-    if (!window.confirm(`${chosen.length} ${chosen.length === 1 ? "Set" : "Sets"} mit den Original-Prompts und -Seeds neu generieren (${what})?`)) return;
+    const skipped = plan?.skipped ? `\n${plan.skipped} doppelte Bilder werden übersprungen.` : "";
+    if (!window.confirm(`${chosen.length} ${chosen.length === 1 ? "Set" : "Sets"} mit den Original-Prompts und -Seeds neu generieren (${jobsToRun} ${jobsToRun === 1 ? "Job" : "Jobs"})?${skipped}`)) return;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const r = await api<SubmitResult>("/api/restore", { method: "POST", json: { keys: [...selected], tz } });
+      const r = await api<SubmitResult>("/api/restore", { method: "POST", json: { keys: [...selected], tz, dedupe } });
       setResult(r);
       if (r.promptIds.length) setSelected(new Set());
       load();
@@ -133,12 +149,19 @@ export default function RestorePage() {
 
       <Select value={folder} onChange={(v) => { setFolder(v); setLimit(PAGE); }} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />
       <Toggle checked={onlyDeleted} onChange={(v) => { setOnlyDeleted(v); setLimit(PAGE); }} label="Nur gelöschte Sets" />
+      <Toggle
+        checked={dedupe}
+        onChange={setDedupe}
+        label="Jedes Bild nur einmal"
+        hint="Wurde ein Batch mehrmals abgeschickt (z. B. abgebrochen und neu gestartet), entsteht jede Datei (Ordner + Name) trotzdem nur einmal – aus dem Lauf, der damals fertig wurde."
+      />
 
       {result && (
         <section className="card space-y-2 p-3 text-sm">
           {result.promptIds.length > 0 && (
             <p className="text-emerald-300">
-              ✓ {result.promptIds.length} {result.promptIds.length === 1 ? "Job" : "Jobs"} in der Warteschlange.{" "}
+              ✓ {result.promptIds.length} {result.promptIds.length === 1 ? "Job" : "Jobs"} in der Warteschlange
+              {result.skipped ? ` (${result.skipped} doppelte übersprungen)` : ""}.{" "}
               <Link href="/queue" className="text-accent underline">
                 Zur Queue
               </Link>
@@ -174,6 +197,12 @@ export default function RestorePage() {
                       {count(s)} · {GEN_LABEL[s.generator] ?? s.generator}
                     </span>
                     <span className={st.cls}>{st.text}</span>
+                    {s.finished !== null && s.finished < s.jobs && (
+                      <span className="text-amber-300">
+                        {s.finished === 0 ? "nie fertig geworden" : `nur ${s.finished} von ${s.jobs} fertig geworden`}
+                      </span>
+                    )}
+                    {s.finished !== null && s.finished === s.jobs && s.jobs > 1 && <span className="text-emerald-300">✓ alle fertig geworden</span>}
                     {missing > 0 && <span className="text-amber-300">⚠ {missing} Modell{missing === 1 ? "" : "e"} fehlt</span>}
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-muted">{s.preview}</p>
@@ -275,10 +304,15 @@ export default function RestorePage() {
               )}
             </div>
           )}
+          {!!plan?.skipped && (
+            <p className="card px-3 py-2 text-center text-xs text-soft shadow-lg shadow-black/40">
+              {plan.skipped} doppelte {plan.skipped === 1 ? "Bild wird" : "Bilder werden"} übersprungen – jede Datei nur einmal
+            </p>
+          )}
           <button type="button" className="btn btn-primary h-14 w-full text-lg shadow-lg shadow-black/40" disabled={busy || !podOnline} onClick={start}>
             {busy
               ? "Wird eingereiht …"
-              : `Neu generieren – ${chosen.length} ${chosen.length === 1 ? "Set" : "Sets"} (${chosenJobs} ${chosenJobs === 1 ? "Job" : "Jobs"})`}
+              : `Neu generieren – ${jobsToRun} ${jobsToRun === 1 ? "Job" : "Jobs"} aus ${chosen.length} ${chosen.length === 1 ? "Set" : "Sets"}`}
           </button>
         </div>
       )}

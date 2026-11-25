@@ -1,10 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { type JobLite, type ModelLists, type ModelStatus, type RestoreSet, groupSets, lookup, summarizeJob } from "../restore";
+import { type JobLite, type ModelLists, type ModelStatus, type RestoreSet, dedupeJobs, groupSets, lookup, summarizeJob } from "../restore";
 import type { JobRecord } from "../types";
 import { config } from "./config";
 import { getHistory } from "./history";
-import { deletedMap, isDeleted, listMirrored } from "./mirror";
+import { deletedMap, isDeleted, listMirrored, mirroredPromptIds } from "./mirror";
 import { findLink, getModelLinks } from "./modelRegistry";
 import { getOptions } from "./options";
 import { serverMode } from "./podLink";
@@ -94,9 +94,15 @@ export async function jobSummaries(): Promise<JobLite[]> {
   return [...liteCache.values()].map((v) => v.lite).filter((l): l is JobLite => !!l);
 }
 
+/** Fertig gewordene Jobs: im Server-Modus aus dem Spiegel, sonst unbekannt */
+async function finishedPromptIds(): Promise<Set<string> | null> {
+  if (!serverMode()) return null;
+  return mirroredPromptIds().catch(() => null);
+}
+
 export async function listRestoreSets(tzOffsetMin: number): Promise<{ sets: RestoreSet[]; podOnline: boolean }> {
-  const [jobs, present, lists, links] = await Promise.all([jobSummaries(), presentPromptIds(), podModelLists(), getModelLinks()]);
-  const sets = groupSets(jobs, present, tzOffsetMin).map(({ needs, promptIds: _ids, ...s }) => {
+  const [jobs, present, lists, links, finished] = await Promise.all([jobSummaries(), presentPromptIds(), podModelLists(), getModelLinks(), finishedPromptIds()]);
+  const sets = groupSets(jobs, present, tzOffsetMin, finished).map(({ needs, promptIds: _ids, ...s }) => {
     const models = needs.map((m) => {
       const found = lookup(lists, m);
       const link = findLink(links, m.name);
@@ -108,16 +114,37 @@ export async function listRestoreSets(tzOffsetMin: number): Promise<{ sets: Rest
   return { sets, podOnline: !!lists };
 }
 
-/** Jobs der gewählten Sets, in Set-Reihenfolge (ältestes Set zuerst, damit die Queue chronologisch ist) */
-export async function jobsForSets(keys: string[], tzOffsetMin: number): Promise<JobRecord[][]> {
+export interface RestorePlan {
+  /** je gewähltem Set die Jobs, die gestartet werden (ältestes Set zuerst) */
+  groups: string[][];
+  jobs: number;
+  /** wegen gleicher Ausgabedatei übersprungen */
+  skipped: number;
+}
+
+/** Was „Neu generieren“ starten würde – mit dedupe jede Ausgabedatei nur einmal */
+export async function planRestore(keys: string[], tzOffsetMin: number, dedupe: boolean): Promise<RestorePlan> {
   const want = new Set(keys);
-  const chosen = groupSets(await jobSummaries(), new Set(), tzOffsetMin)
+  const lites = await jobSummaries();
+  const chosen = groupSets(lites, new Set(), tzOffsetMin)
     .filter((s) => want.has(s.key))
     .reverse();
+  const all = chosen.flatMap((s) => s.promptIds);
+  let keep: Set<string> = new Set(all);
+  if (dedupe) {
+    const byId = new Map(lites.map((l) => [l.promptId, l]));
+    keep = dedupeJobs(all.map((id) => byId.get(id)!), await finishedPromptIds());
+  }
+  const groups = chosen.map((s) => s.promptIds.filter((id) => keep.has(id))).filter((g) => g.length);
+  const jobs = groups.reduce((n, g) => n + g.length, 0);
+  return { groups, jobs, skipped: all.length - jobs };
+}
+
+/** Jobs eines Plans ganz laden (nur die gewählten) */
+export async function loadPlan(plan: RestorePlan): Promise<JobRecord[][]> {
   const out: JobRecord[][] = [];
-  // nur die gewählten Jobs ganz laden
-  for (const s of chosen) {
-    const jobs = (await Promise.all(s.promptIds.map((id) => getJob(id)))).filter((j): j is JobRecord => !!j);
+  for (const ids of plan.groups) {
+    const jobs = (await Promise.all(ids.map((id) => getJob(id)))).filter((j): j is JobRecord => !!j);
     if (jobs.length) out.push(jobs);
   }
   return out;
