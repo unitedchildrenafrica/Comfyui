@@ -17,15 +17,15 @@ export function GET(req: NextRequest) {
 /** { items: [{ url, type, filename, sizeBytes, title? }] } – jede Datei ein eigener Download */
 export async function POST(req: NextRequest) {
   const raw = await req.text();
-  let items: { url: string; type: ModelType; filename: string; sizeBytes?: number | null; title?: string; use?: "image" | "video" }[] | undefined;
+  let items: { url: string; type: ModelType; filename: string; sizeBytes?: number | null; title?: string; use?: "image" | "video" | "krea2" }[] | undefined;
   try {
     items = (JSON.parse(raw) as { items?: typeof items }).items;
   } catch {}
   // Link merken, damit die Datei später (neuer Pod, gelöscht) wieder geladen werden kann
   if (Array.isArray(items)) {
     await saveModelLinks(items).catch(() => {});
-    // Bild- oder Video-LoRA gleich zuordnen
-    const uses = items.filter((i) => i.type === "lora" && (i.use === "image" || i.use === "video")).map((i) => ({ name: i.filename, use: i.use! }));
+    // Bild-, Video- oder Krea-LoRA gleich zuordnen
+    const uses = items.filter((i) => i.type === "lora" && (i.use === "image" || i.use === "video" || i.use === "krea2")).map((i) => ({ name: i.filename, use: i.use! }));
     if (uses.length) await setLoraOverrides(uses).catch(() => {});
   }
   if (serverMode()) {

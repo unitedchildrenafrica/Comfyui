@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { redownload } from "@/lib/characterTools";
 import { api } from "@/lib/client";
-import { loraFits, type LoraUse } from "@/lib/loraKinds";
+import { loraFits, type LoraTarget, type LoraUse } from "@/lib/loraKinds";
 import { baseName, findAvailable } from "@/lib/notes";
 import type { LoraEntry } from "@/lib/types";
 import { Select, Slider, WarnBox } from "./ui";
@@ -71,13 +71,18 @@ export function LoraList({
   target,
   use = {},
   onReload,
+  maxStrength = 2,
+  defaultStrength = 1,
 }: {
   loras: LoraEntry[];
   onChange: (l: LoraEntry[]) => void;
   available: string[];
   max?: number;
-  /** nur LoRAs für Bilder bzw. Videos zeigen (plus noch nicht zugeordnete) */
-  target?: "image" | "video";
+  /** nur LoRAs für Bilder, Videos bzw. Krea 2 zeigen (plus noch nicht zugeordnete) */
+  target?: LoraTarget;
+  /** Obergrenze des Stärke-Reglers (Krea 2: 1.5) */
+  maxStrength?: number;
+  defaultStrength?: number;
   use?: Record<string, { use: LoraUse | null }>;
   /** Auswahllisten vom Pod neu holen (nach einem Download) */
   onReload?: () => void;
@@ -104,21 +109,21 @@ export function LoraList({
               ✕
             </button>
           </div>
-          <Slider value={l.strength} min={0} max={2} step={0.05} onChange={(v) => update(i, { strength: v })} />
+          <Slider value={l.strength} min={0} max={maxStrength} step={0.05} onChange={(v) => update(i, { strength: v })} />
         </div>
       ))}
       <button
         type="button"
         className="btn btn-ghost w-full"
         disabled={!canAdd || !fitting.length}
-        onClick={() => onChange([...loras, { name: fitting[0] ?? "", strength: 1, enabled: true }])}
+        onClick={() => onChange([...loras, { name: fitting[0] ?? "", strength: defaultStrength, enabled: true }])}
       >
         + LoRA hinzufügen{max ? ` (${loras.length}/${max})` : ""}
       </button>
       {target && (hidden > 0 || unsorted > 0) && (
         <p className="text-center text-xs text-muted">
-          {hidden > 0 && `${hidden} ${target === "image" ? "Video" : "Bild"}-LoRAs ausgeblendet. `}
-          {unsorted > 0 && `${unsorted} noch nicht zugeordnet (stehen in beiden Listen). `}
+          {hidden > 0 && `${hidden} ${target === "krea2" ? "andere" : target === "image" ? "Video-/Krea" : "Bild-/Krea"}-LoRAs ausgeblendet. `}
+          {unsorted > 0 && `${unsorted} noch nicht zugeordnet (stehen in allen Listen). `}
           <Link href="/modelle#loras" className="text-accent underline">
             Sortieren
           </Link>

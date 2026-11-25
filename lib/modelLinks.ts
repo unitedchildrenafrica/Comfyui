@@ -63,9 +63,9 @@ export function civitaiType(modelType: string, fileType: string, baseModel: stri
   if (t === "vae") return "vae";
   if (t === "upscaler") return "upscaler";
   if (t === "textualinversion") return "embedding";
-  // Anima und MiniMax H3 werden bei Civitai als „Checkpoint“ geführt, sind aber nur das
+  // Anima, Krea 2 und MiniMax H3 werden bei Civitai als „Checkpoint“ geführt, sind aber nur das
   // Diffusions-Modell (UNETLoader → diffusion_models)
-  if (/anima|minimax|(^|\W)h3(\W|$)/i.test(baseModel)) return "unet";
+  if (/anima|krea|minimax|(^|\W)h3(\W|$)/i.test(baseModel)) return "unet";
   return "checkpoint";
 }
 

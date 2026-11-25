@@ -22,6 +22,17 @@ describe("parseBatch", () => {
     expect(errors.map((e) => e.block)).toEqual([1, 2, 3, 5]);
   });
 
+  it("Krea 2: negative:-Zeilen werden ignoriert und gezählt", () => {
+    const r = parseBatch("positive: a\nnegative: n1\n---\npositive: b\n---\npositive: c\nnegative: n3\nname: x", "DEF", { ignoreNegative: true });
+    expect(r.errors).toEqual([]);
+    expect(r.ignoredNegatives).toBe(2);
+    expect(r.items).toEqual([
+      { positive: "a", negative: "", name: "bild_001" },
+      { positive: "b", negative: "", name: "bild_002" },
+      { positive: "c", negative: "", name: "x" },
+    ]);
+  });
+
   it("schafft 250 Blöcke", () => {
     const text = Array.from({ length: 250 }, (_, i) => `positive: p${i}`).join("\n---\n");
     expect(parseBatch(text, "").items).toHaveLength(250);

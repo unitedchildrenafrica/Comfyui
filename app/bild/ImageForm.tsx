@@ -8,10 +8,11 @@ import { JobTracker, type Submitted } from "@/components/JobTracker";
 import { ComfyDown, ErrorBox, Field, NodeErrors, NumberInput, Section, Segmented, Select, Slider, Toggle, WarnBox } from "@/components/ui";
 import { useOptions } from "@/hooks/useOptions";
 import { parseBatch, type BatchError } from "@/lib/batch";
-import { scaledSize } from "@/lib/builders/common";
+import { roundTo, scaledSize } from "@/lib/builders/common";
 import { APPLY_EVENT, takePendingCharacter } from "@/lib/characterTools";
 import { api, ApiError, IMAGE_FORM_KEY, loadLocal, saveLocal } from "@/lib/client";
-import { ASPECTS, DEFAULT_NEGATIVE, UPSCALE_FACTORS, defaultImageSettings } from "@/lib/defaults";
+import { ASPECTS, DEFAULT_NEGATIVE, KREA2_ASPECTS, KREA2_LORA_PRESETS, UPSCALE_FACTORS, defaultImageSettings } from "@/lib/defaults";
+import { KREA2_MULTIPLE, krea2LoraSum, krea2Problems } from "@/lib/krea2";
 import { type Character, findAvailable } from "@/lib/notes";
 import type { ImageGenerator, ImageSettings, JobRecord } from "@/lib/types";
 import { samplerOptions } from "@/lib/samplers";
@@ -20,7 +21,11 @@ const GENERATORS: { value: ImageGenerator; label: string }[] = [
   { value: "wai", label: "WAI" },
   { value: "pony", label: "Pony" },
   { value: "anima", label: "Anima" },
+  { value: "krea2", label: "Krea 2" },
 ];
+
+/** Presets gelten pro Familie: WAI und Pony teilen sich ihre (gleicher Builder) */
+const family = (g: ImageGenerator) => (g === "pony" ? "wai" : g);
 
 type AllSettings = Record<ImageGenerator, ImageSettings>;
 type Presets = Record<string, ImageSettings>;
@@ -28,7 +33,12 @@ type Presets = Record<string, ImageSettings>;
 const STORAGE_KEY = IMAGE_FORM_KEY;
 
 function initialAll(): AllSettings {
-  return { wai: defaultImageSettings("wai"), pony: defaultImageSettings("pony"), anima: defaultImageSettings("anima") };
+  return {
+    wai: defaultImageSettings("wai"),
+    pony: defaultImageSettings("pony"),
+    anima: defaultImageSettings("anima"),
+    krea2: defaultImageSettings("krea2"),
+  };
 }
 
 export function ImageForm() {
@@ -104,7 +114,7 @@ export function ImageForm() {
           promptMode: "single",
           positive: c.positive || a[g].positive,
           negative: c.negative || a[g].negative,
-          ...(c.checkpoint && g !== "anima" ? { checkpoint: c.checkpoint } : {}),
+          ...(c.checkpoint && (g === "wai" || g === "pony") ? { checkpoint: c.checkpoint } : {}),
           // Ohne LoRAs im Charakter bleiben die bisherigen stehen
           ...(c.loras.length
             ? { loras: c.loras.map((l) => ({ name: findAvailable(l.name, loraOptions.current) ?? l.name, strength: l.strength, enabled: true })) }
@@ -125,13 +135,21 @@ export function ImageForm() {
   }, [loaded, generator, all, lastSeed]);
 
   const defaultNegative = appDefaults?.defaultNegative ?? DEFAULT_NEGATIVE;
-  const batch = useMemo(() => (s.promptMode === "batch" ? parseBatch(s.batchText, s.negative.trim() || defaultNegative) : null), [s.promptMode, s.batchText, s.negative, defaultNegative]);
+  const isKrea = generator === "krea2";
+  const batch = useMemo(
+    () => (s.promptMode === "batch" ? parseBatch(s.batchText, isKrea ? "" : s.negative.trim() || defaultNegative, { ignoreNegative: isKrea }) : null),
+    [s.promptMode, s.batchText, s.negative, defaultNegative, isKrea],
+  );
   const jobCount = s.promptMode === "batch" ? (batch?.items.length ?? 0) : s.positive.trim() ? 1 : 0;
   const imageCount = jobCount * s.batchSize;
   const isAnima = generator === "anima";
-  const aspect = ASPECTS.find((a) => a.width === s.width && a.height === s.height)?.id ?? "custom";
-  const target = scaledSize(s.width, s.height, s.upscale.factor);
-  const presetNames = Object.keys(presets).filter((n) => (isAnima ? presets[n].generator === "anima" : presets[n].generator !== "anima"));
+  /** UNet + Text-Encoder + VAE statt Checkpoint */
+  const splitModel = isAnima || isKrea;
+  const aspects: readonly { id: string; label: string; width: number; height: number }[] = isKrea ? KREA2_ASPECTS : ASPECTS;
+  const sizeStep = isKrea ? KREA2_MULTIPLE : 64;
+  const aspect = aspects.find((a) => a.width === s.width && a.height === s.height)?.id ?? "custom";
+  const target = scaledSize(s.width, s.height, s.upscale.factor, isKrea ? KREA2_MULTIPLE : 8);
+  const presetNames = Object.keys(presets).filter((n) => family(presets[n].generator) === family(generator));
 
   const applyPreset = (name: string) => {
     const p = presets[name];
@@ -179,6 +197,40 @@ export function ImageForm() {
   const samplerOpts = samplerOptions(o?.samplers ?? []);
   const schedulerOpts = o?.schedulers ?? [];
 
+  const kreaIssues = isKrea && o
+    ? [
+        ...(o.krea2.startupWarning ? [o.krea2.startupWarning] : []),
+        ...krea2Problems({ ...s, loras: [] }, { unets: o.unets, clips: o.clips, vaes: o.vaes, clipTypes: o.krea2.clipTypes, modelOnlyLoras: o.krea2.modelOnlyLoras }),
+      ]
+    : [];
+  // Vorbelegte Krea-LoRAs nur, wenn die Datei auf dem Pod liegt und noch nicht in der Liste ist
+  const kreaPresets = isKrea
+    ? KREA2_LORA_PRESETS.flatMap((p) => {
+        const name = findAvailable(p.file, o?.loras ?? []);
+        return name && !s.loras.some((l) => l.name === name) ? [{ ...p, name }] : [];
+      })
+    : [];
+  const kreaLoraSum = isKrea ? krea2LoraSum(s.loras) : 0;
+
+  const samplingFields = (
+    <>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Sampler">
+            <Select value={s.sampler} onChange={(v) => set({ sampler: v })} options={samplerOpts} />
+          </Field>
+          <Field label="Planer">
+            <Select value={s.scheduler} onChange={(v) => set({ scheduler: v })} options={schedulerOpts} />
+          </Field>
+        </div>
+        <Field label="Sampling-Schritte">
+          <Slider value={s.steps} min={1} max={60} onChange={(v) => set({ steps: v })} />
+        </Field>
+        <Field label="CFG">
+          <Slider value={s.cfg} min={1} max={15} step={0.5} onChange={(v) => set({ cfg: v })} />
+        </Field>
+    </>
+  );
+
   return (
     <main className="page">
       <Segmented value={generator} options={GENERATORS} onChange={setGenerator} />
@@ -206,30 +258,52 @@ export function ImageForm() {
         />
         {s.promptMode === "single" ? (
           <>
-            <Field label="Positiv" right={<PasteButton onPaste={(t) => set({ positive: t })} />}>
-              <textarea className="input min-h-32" value={s.positive} onChange={(e) => set({ positive: e.target.value })} placeholder="1girl, solo, …" />
+            <Field
+              label={isKrea ? "Prompt" : "Positiv"}
+              hint={isKrea ? "Ganze englische Sätze statt Tag-Liste. Kein Negativ-Prompt nötig (CFG 1)." : undefined}
+              right={<PasteButton onPaste={(t) => set({ positive: t })} />}
+            >
+              <textarea
+                className="input min-h-32"
+                value={s.positive}
+                onChange={(e) => set({ positive: e.target.value })}
+                placeholder={isKrea ? "A photo of an adult woman with silver hair sitting by a window, soft morning light, …" : "1girl, solo, …"}
+              />
             </Field>
-            <Field label="Negativ" right={<PasteButton onPaste={(t) => set({ negative: t })} />}>
-              <textarea className="input min-h-20" value={s.negative} onChange={(e) => set({ negative: e.target.value })} placeholder={defaultNegative} />
-            </Field>
+            {!isKrea && (
+              <Field label="Negativ" right={<PasteButton onPaste={(t) => set({ negative: t })} />}>
+                <textarea className="input min-h-20" value={s.negative} onChange={(e) => set({ negative: e.target.value })} placeholder={defaultNegative} />
+              </Field>
+            )}
           </>
         ) : (
           <>
             <Field
               label="Batch-Prompts"
-              hint="Blöcke mit --- trennen. Zeilen: positive: / negative: / name:"
+              hint={isKrea ? "Blöcke mit --- trennen. Zeilen: positive: / name: (negative: wird ignoriert)" : "Blöcke mit --- trennen. Zeilen: positive: / negative: / name:"}
               right={<PasteButton onPaste={(t) => set({ batchText: t })} />}
             >
               <textarea
                 className="input min-h-72 font-mono text-sm"
                 value={s.batchText}
                 onChange={(e) => set({ batchText: e.target.value })}
-                placeholder={"positive: 1girl, solo, silver hair\nnegative: lowres, bad anatomy\nname: bild_001\n---\npositive: …"}
+                placeholder={
+                  isKrea
+                    ? "positive: A photo of an adult woman with silver hair …\nname: bild_001\n---\npositive: …"
+                    : "positive: 1girl, solo, silver hair\nnegative: lowres, bad anatomy\nname: bild_001\n---\npositive: …"
+                }
               />
             </Field>
-            <Field label="Standard-Negativ (wenn ein Block keins hat)">
-              <textarea className="input min-h-16" value={s.negative} onChange={(e) => set({ negative: e.target.value })} placeholder={defaultNegative} />
-            </Field>
+            {!isKrea && (
+              <Field label="Standard-Negativ (wenn ein Block keins hat)">
+                <textarea className="input min-h-16" value={s.negative} onChange={(e) => set({ negative: e.target.value })} placeholder={defaultNegative} />
+              </Field>
+            )}
+            {batch && batch.ignoredNegatives > 0 && (
+              <p className="text-xs text-amber-300">
+                Hinweis: {batch.ignoredNegatives} {batch.ignoredNegatives === 1 ? "Block hat" : "Blöcke haben"} eine negative:-Zeile – Negativ-Prompts werden bei Krea 2 ignoriert.
+              </p>
+            )}
             {batch && (
               <p className="text-sm text-muted">
                 {batch.items.length} gültige Blöcke{batch.errors.length ? `, ${batch.errors.length} fehlerhaft` : ""}
@@ -251,7 +325,16 @@ export function ImageForm() {
       </section>
 
       <Section title="Modelle" defaultOpen>
-        {isAnima ? (
+        {isKrea && kreaIssues.length > 0 && (
+          <WarnBox>
+            <ul className="space-y-1">
+              {kreaIssues.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </WarnBox>
+        )}
+        {splitModel ? (
           <>
             <Field label="UNet">
               <Select value={s.unet} onChange={(v) => set({ unet: v })} options={o?.unets ?? []} />
@@ -273,8 +356,42 @@ export function ImageForm() {
             </Field>
           </>
         )}
-        <Field label="LoRAs" hint={isAnima ? "Illustrious-/SDXL-LoRAs funktionieren nicht mit Anima." : undefined}>
-          <LoraList loras={s.loras} onChange={(loras) => set({ loras })} available={o?.loras ?? []} target="image" use={o?.loraUse} onReload={reload} />
+        <Field
+          label="LoRAs"
+          hint={
+            isKrea
+              ? "Nur LoRAs, die für Krea 2 trainiert sind – WAI-/Pony-/Anima-LoRAs funktionieren hier nicht. Bei mehreren LoRAs die Stärken senken (Summe ≤ 1.5)."
+              : isAnima
+                ? "Illustrious-/SDXL-LoRAs funktionieren nicht mit Anima."
+                : undefined
+          }
+        >
+          {isKrea && kreaPresets.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {kreaPresets.map((p) => (
+                <button
+                  key={p.file}
+                  type="button"
+                  className="min-h-9 rounded-full border border-line px-3 text-sm text-soft"
+                  onClick={() => set({ loras: [...s.loras, { name: p.name, strength: p.strength, enabled: true }] })}
+                >
+                  + {p.label} ({p.strength})
+                </button>
+              ))}
+            </div>
+          )}
+          <LoraList
+            loras={s.loras}
+            onChange={(loras) => set({ loras })}
+            available={o?.loras ?? []}
+            target={isKrea ? "krea2" : "image"}
+            use={o?.loraUse}
+            onReload={reload}
+            maxStrength={isKrea ? 1.5 : 2}
+          />
+          {isKrea && kreaLoraSum > 1.5 && (
+            <p className="mt-2 text-xs text-amber-300">Summe der LoRA-Stärken {kreaLoraSum.toFixed(2)} – über 1.5 gibt es bei Krea 2 oft Artefakte.</p>
+          )}
         </Field>
       </Section>
 
@@ -282,9 +399,9 @@ export function ImageForm() {
         <Field label="Seitenverhältnis" right={`${s.width}×${s.height}`}>
           <Segmented
             value={aspect}
-            options={[...ASPECTS.map((a) => ({ value: a.id as string, label: a.label })), { value: "custom", label: "Custom" }]}
+            options={[...aspects.map((a) => ({ value: a.id, label: a.label })), { value: "custom", label: "Custom" }]}
             onChange={(id) => {
-              const a = ASPECTS.find((x) => x.id === id);
+              const a = aspects.find((x) => x.id === id);
               if (a) set({ width: a.width, height: a.height });
               else set({ width: s.width + 64 });
             }}
@@ -293,28 +410,21 @@ export function ImageForm() {
         {aspect === "custom" && (
           <div className="grid grid-cols-2 gap-2">
             <Field label="Breite">
-              <NumberInput value={s.width} step={64} min={256} max={2048} onChange={(v) => set({ width: v ?? 768 })} />
+              <NumberInput value={s.width} step={sizeStep} min={256} max={2048} onChange={(v) => set({ width: v ?? 768 })} />
             </Field>
             <Field label="Höhe">
-              <NumberInput value={s.height} step={64} min={256} max={2048} onChange={(v) => set({ height: v ?? 1152 })} />
+              <NumberInput value={s.height} step={sizeStep} min={256} max={2048} onChange={(v) => set({ height: v ?? 1152 })} />
             </Field>
-            {(s.width % 64 !== 0 || s.height % 64 !== 0) && <p className="col-span-2 text-xs text-amber-300">Breite/Höhe sollten Vielfache von 64 sein.</p>}
+            {(s.width % sizeStep !== 0 || s.height % sizeStep !== 0) && (
+              <p className="col-span-2 text-xs text-amber-300">
+                {isKrea
+                  ? `Wird auf Vielfache von 16 gerundet: ${roundTo(s.width, KREA2_MULTIPLE)}×${roundTo(s.height, KREA2_MULTIPLE)}`
+                  : "Breite/Höhe sollten Vielfache von 64 sein."}
+              </p>
+            )}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Sampler">
-            <Select value={s.sampler} onChange={(v) => set({ sampler: v })} options={samplerOpts} />
-          </Field>
-          <Field label="Planer">
-            <Select value={s.scheduler} onChange={(v) => set({ scheduler: v })} options={schedulerOpts} />
-          </Field>
-        </div>
-        <Field label="Sampling-Schritte">
-          <Slider value={s.steps} min={1} max={60} onChange={(v) => set({ steps: v })} />
-        </Field>
-        <Field label="CFG">
-          <Slider value={s.cfg} min={1} max={15} step={0.5} onChange={(v) => set({ cfg: v })} />
-        </Field>
+        {!isKrea && samplingFields}
         <Field
           label="Seed"
           hint="Leer = Zufall"
@@ -334,7 +444,13 @@ export function ImageForm() {
       </Section>
 
       <Section title="Erweiterte Einstellungen">
-        {!isAnima && (
+        {isKrea && (
+          <>
+            <p className="text-xs text-muted">Krea 2 Turbo ist auf 8 Schritte, CFG 1, euler / simple abgestimmt. Nur ändern, wenn du weißt, warum.</p>
+            {samplingFields}
+          </>
+        )}
+        {(generator === "wai" || generator === "pony") && (
           <Field label="Clip Skip">
             <Segmented value={s.clipSkip} options={[1, 2].map((n) => ({ value: n, label: String(n) }))} onChange={(v) => set({ clipSkip: v })} />
           </Field>
@@ -360,13 +476,14 @@ export function ImageForm() {
         </Field>
       </Section>
 
-      <Section
-        title="ADetailer (Gesichter & Hände)"
-        right={[s.adetailer && "Gesicht", s.adetailerHands && "Hände"].filter(Boolean).join(" + ") || "aus"}
-      >
-        {o && !o.available.faceDetailer && (
-          <WarnBox>Auf diesem Pod fehlt das Impact Pack (bzw. Subpack). Setup „bilder“ oder „alles“ einmal neu laufen lassen.</WarnBox>
-        )}
+      {!isKrea && (
+        <Section
+          title="ADetailer (Gesichter & Hände)"
+          right={[s.adetailer && "Gesicht", s.adetailerHands && "Hände"].filter(Boolean).join(" + ") || "aus"}
+        >
+          {o && !o.available.faceDetailer && (
+            <WarnBox>Auf diesem Pod fehlt das Impact Pack (bzw. Subpack). Setup „bilder“ oder „alles“ einmal neu laufen lassen.</WarnBox>
+      )}
         <Toggle
           checked={!!s.adetailer}
           onChange={(v) => set({ adetailer: v })}
@@ -392,6 +509,7 @@ export function ImageForm() {
           </Field>
         )}
       </Section>
+      )}
 
       <Section title="Hochskalieren" right={s.upscale.enabled ? `${s.upscale.factor}x` : "aus"}>
         <Toggle checked={s.upscale.enabled} onChange={(v) => setUp({ enabled: v })} label="Hochskalieren" />

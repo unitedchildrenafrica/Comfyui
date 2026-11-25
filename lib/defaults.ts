@@ -9,6 +9,29 @@ export const ASPECTS = [
   { id: "square", label: "Square", width: 1024, height: 1024 },
 ] as const;
 
+/** Krea 2 Turbo: eigene Formate (Vielfache von 16) */
+export const KREA2_ASPECTS = [
+  { id: "portrait", label: "Hoch", width: 896, height: 1152 },
+  { id: "portrait-narrow", label: "Hoch schmal", width: 832, height: 1216 },
+  { id: "square", label: "Quadrat", width: 1024, height: 1024 },
+  { id: "landscape", label: "Quer", width: 1152, height: 896 },
+  { id: "landscape-wide", label: "Quer breit", width: 1216, height: 832 },
+] as const;
+
+/** Vorbelegte Krea-2-LoRAs – erscheinen nur, wenn die Datei auf dem Pod liegt */
+export const KREA2_LORA_PRESETS = [
+  { label: "NSFW AIO", file: "krea2_aio_nsfw.safetensors", strength: 0.8 },
+  { label: "NSFW v2", file: "krea2_nsfw_v2.safetensors", strength: 0.8 },
+  { label: "Turbo NSFW", file: "krea2_turbo_nsfw.safetensors", strength: 1.0 },
+] as const;
+
+/** Standarddateien für Krea 2 (Vorauswahl in den Dropdowns) */
+export const KREA2_FILES = {
+  unet: "krea2_turbo_fp8_scaled.safetensors",
+  textEncoder: "qwen3vl_4b_fp8_scaled.safetensors",
+  vae: "qwen_image_vae.safetensors",
+} as const;
+
 export const UPSCALE_FACTORS = [1, 1.5, 2, 3, 4] as const;
 
 export function defaultImageSettings(generator: ImageGenerator): ImageSettings {
@@ -53,6 +76,22 @@ export function defaultImageSettings(generator: ImageGenerator): ImageSettings {
   }
   if (generator === "anima") {
     return { ...base, vae: "qwen_image_vae.safetensors", sampler: "euler", scheduler: "simple", steps: 25, cfg: 3.5 };
+  }
+  if (generator === "krea2") {
+    // Turbo: 8 Schritte, CFG 1 (kein Negativ), euler/simple. Hires-Werte für den zweiten Durchgang
+    // sind eine Schätzung (4 Schritte, Denoise 0.3) – auf dem Pod prüfen.
+    return {
+      ...base,
+      ...KREA2_FILES,
+      width: 896,
+      height: 1152,
+      sampler: "euler",
+      scheduler: "simple",
+      steps: 8,
+      cfg: 1,
+      negative: "",
+      upscale: { ...base.upscale, steps: 4, denoise: 0.3 },
+    };
   }
   return base;
 }

@@ -39,6 +39,7 @@ describe("Typen und Dateinamen", () => {
   it("civitaiType", () => {
     expect(civitaiType("Checkpoint", "Model", "Illustrious")).toBe("checkpoint");
     expect(civitaiType("Checkpoint", "Model", "Anima")).toBe("unet");
+    expect(civitaiType("Checkpoint", "Model", "Krea 2")).toBe("unet");
     expect(civitaiType("Checkpoint", "Text Encoder", "Anima")).toBe("text_encoder");
     expect(civitaiType("Checkpoint", "VAE", "Anima")).toBe("vae");
     expect(civitaiType("LORA", "Model", "Pony")).toBe("lora");
