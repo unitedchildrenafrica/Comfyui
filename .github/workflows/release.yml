@@ -48,12 +48,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest pod-frontend.tar.gz \
-            --title "latest ($(git rev-parse --short HEAD))" \
-            --notes "Automatischer Build von ${GITHUB_SHA}" \
-            --target "${GITHUB_SHA}" \
-            --latest
+          # GitHub antwortet ab und zu mit HTTP 500 – jeden Schritt ein paar Mal versuchen
+          retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "Fehlgeschlagen ($i/5): $*"; sleep $((i * 5)); done; return 1; }
+          TITLE="latest ($(git rev-parse --short HEAD))"
+          NOTES="Automatischer Build von ${GITHUB_SHA}"
+          if gh release view latest >/dev/null 2>&1; then
+            # Release behalten und nur die Datei ersetzen – kein Löschen, das bei einem
+            # GitHub-Fehler das Release blockiert (Server/Pods laden über den Tag „latest“)
+            retry gh release upload latest pod-frontend.tar.gz --clobber
+            retry gh release edit latest --title "$TITLE" --notes "$NOTES" --draft=false --latest || echo "Titel nicht aktualisiert – Datei ist trotzdem neu"
+          else
+            retry gh release create latest pod-frontend.tar.gz --title "$TITLE" --notes "$NOTES" --target "${GITHUB_SHA}" --latest
+          fi
           # Sicherstellen, dass es kein Entwurf bleibt – Entwürfe sind für Pods und Server unsichtbar (404)
           for i in 1 2 3 4 5; do
             [ "$(gh release view latest --json isDraft -q .isDraft)" = "false" ] && break

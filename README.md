@@ -45,7 +45,6 @@ Das ist `GH_TOKEN`.
 | `SESSION_SECRET` | nein | Signiert das Login-Cookie. Ohne Angabe wird einer erzeugt und in `DATA_DIR` gespeichert |
 | `COMFY_URL` | nein | Standard im Pod-Skript `http://127.0.0.1:18188` |
 | `DATA_DIR` | nein | Standard `/workspace/pod-frontend-data` (Presets, Job-Einstellungen) |
-| `OPENAI_API_KEY` | nein | Nur für den Tab **Knete** (Fotos im Knete-Stil über OpenAI). Im Server-Modus stattdessen `bash /root/setup-server.sh openai` |
 
 ### 4. Setup-Skript für jeden neuen Pod
 
@@ -135,22 +134,6 @@ bash /root/setup-server.sh patreon
 ```
 
 und Client ID, Client Secret, Creator's Access Token und Creator's Refresh Token eingeben (werden nicht angezeigt, landen in `/etc/pod-frontend.env`). Abgelaufene Tokens erneuert die App selbst (`DATA_DIR/patreon-tokens.json`). Zum lokalen Testen gibt es `dev/mock-patreon.mjs`.
-
-### 6d. Knete-Stil (vorübergehend, über OpenAI)
-
-Tab **🎨 Knete**: eigene Fotos 1:1 im Stil deiner Knete-Bilder neu erzeugen. Läuft über die OpenAI-Bild-API (Standard: GPT Image 2.6 „Sunburst“), **nicht** über ComfyUI – geht also auch ohne Pod.
-
-1. **Stil-Referenzen:** 3–6 eigene Knete-Bilder hochladen (bis 10). Sie bleiben gespeichert (`DATA_DIR/knete/refs`).
-2. **Fotos auswählen** (auch 50+ auf einmal), optional Ordnername → **Umwandeln**. Jedes Foto wird nach dem Hochladen sofort auf dem Server in die Warteschlange gestellt; nach dem Hochladen darf das Handy gesperrt werden. Unterbrochene Aufträge laufen nach einem Neustart der App von selbst weiter.
-3. Ergebnisse: in der Auftragskarte (antippen = Vollbild, „👆 Vorher“ gedrückt halten zum Vergleichen, wischen), als **📦 ZIP** oder in der Galerie unter dem Ordner `knete/<name>` (Dateien in `OUTPUT_DIR/knete/`).
-
-Pro Auftrag: Abbrechen, „Fehler nochmal“, einzelne Bilder neu erzeugen, weitere Fotos hinzufügen. Die Kosten werden aus den Token-Angaben von OpenAI mitgerechnet (Preise der GPT-Image-2.x-Modelle, Standard-Tarif). Ist der Schlüssel ungültig oder das Guthaben leer, hält der Auftrag an („▶ Fortsetzen“). Fotos, die der Inhaltsfilter von OpenAI ablehnt, werden als Fehler angezeigt; der Rest läuft weiter.
-
-**Schlüssel:** platform.openai.com → API keys (das ChatGPT-Abo gilt dafür nicht, die API wird separat abgerechnet). Server-Modus: `bash /root/setup-server.sh openai`. Direkt auf dem Pod: `OPENAI_API_KEY` im Template.
-
-**Lokal testen:** `node dev/mock-openai.mjs` und die App mit `OPENAI_BASE_URL=http://127.0.0.1:8199/v1 OPENAI_API_KEY=test` starten.
-
-**Wieder entfernen:** Ordner `app/knete`, `app/api/knete`, `lib/knete.ts`, `lib/server/knete.ts`, `instrumentation.ts`, den Eintrag in `components/BottomNav.tsx` und diesen Abschnitt löschen.
 
 ### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
 
