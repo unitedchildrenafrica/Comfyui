@@ -10,6 +10,7 @@ const TABS = [
   { href: "/galerie", label: "Galerie", icon: "🗂️" },
   { href: "/notizen", label: "Notizen", icon: "📝" },
   { href: "/einstellungen", label: "Setup", icon: "⚙️" },
+  { href: "/fotos", label: "Fotos", icon: "📷" },
 ];
 
 export function BottomNav() {

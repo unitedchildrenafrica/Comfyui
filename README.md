@@ -137,6 +137,12 @@ bash /root/setup-server.sh patreon
 
 und Client ID, Client Secret, Creator's Access Token und Creator's Refresh Token eingeben (werden nicht angezeigt, landen in `/etc/pod-frontend.env`). Abgelaufene Tokens erneuert die App selbst (`DATA_DIR/patreon-tokens.json`). Zum lokalen Testen gibt es `dev/mock-patreon.mjs`.
 
+### Fotos: eigene Bilder und Videos
+
+Tab **📷 Fotos** (ganz rechts): eigene Ordner anlegen, umbenennen, löschen; Bilder und Videos vom Handy hochladen (mehrere auf einmal), ansehen (Vollbild, wischen), herunterladen, einzeln oder per Auswahl löschen, ganzen Ordner als ZIP. Dateien liegen in `DATA_DIR/fotos/<Ordner>/` – im Server-Modus also auf dem Server und unabhängig von Pods. Hochgeladen wird in Stücken zu 32 MB (Cloudflare lässt pro Anfrage nur ~100 MB durch), bricht das Netz ab, wird das Stück wiederholt. Halbe Uploads räumt die App nach einem Tag weg.
+
+**LoRA-Reihenfolge:** Überall, wo LoRAs zur Auswahl stehen, kommen die zuletzt über die App heruntergeladenen zuerst (Datum aus `model-links.json`), danach alle übrigen alphabetisch.
+
 ### 7. Server-Modus: App dauerhaft auf eigenem Server (z. B. one.com)
 
 Die App läuft dann **immer** auf deinem Server unter `https://comfy.comfyusel.uk`, auch ohne Pod. Der GPU-Pod rechnet nur und meldet sich beim Start selbst an. Fertige Bilder und Videos werden **automatisch auf den Server kopiert**. Galerie, Favoriten, ZIP und Löschen funktionieren deshalb auch, wenn gerade kein Pod läuft. „Modelle laden“ wird an den Pod weitergereicht.

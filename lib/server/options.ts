@@ -3,6 +3,8 @@ import { krea2StartupWarning } from "../krea2";
 import { comboValues, comfyJson, getNodeInfo } from "./comfy";
 import { withRole } from "./podLink";
 import { getLoraOverrides } from "./loraKinds";
+import { getModelLinks } from "./modelRegistry";
+import { sortByDownload } from "../loraOrder";
 
 export const H3_REQUIRED_NODES = [
   "MiniMaxH3Director",
@@ -95,9 +97,10 @@ export async function getOptions(): Promise<Options> {
       .then((s) => s.system?.argv)
       .catch(() => null),
   ]);
-  const loras = comboValues(info.LoraLoader, "lora_name");
-  const videoLoras = comboValues(vid.LoraLoader, "lora_name");
-  const overrides = await getLoraOverrides();
+  const [overrides, links] = await Promise.all([getLoraOverrides(), getModelLinks().catch(() => ({}))]);
+  // Zuletzt heruntergeladene LoRAs zuerst (Zeitpunkt aus der Link-Merkliste), der Rest alphabetisch
+  const loras = sortByDownload(comboValues(info.LoraLoader, "lora_name"), Object.values(links));
+  const videoLoras = sortByDownload(comboValues(vid.LoraLoader, "lora_name"), Object.values(links));
 
   return {
     checkpoints: comboValues(info.CheckpointLoaderSimple, "ckpt_name"),

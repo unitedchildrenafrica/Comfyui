@@ -12,6 +12,10 @@ const MIME: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
+  ".m4v": "video/mp4",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".avif": "image/avif",
   ".mkv": "video/x-matroska",
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
@@ -47,7 +51,7 @@ export async function serveFile(abs: string, req: Request, extra: Record<string,
   return new Response(Readable.toWeb(createReadStream(abs)) as ReadableStream, { headers: { ...headers, "content-length": String(total) } });
 }
 
-/** Kleines WebP-Vorschaubild (Galerie-Kacheln), zwischengespeichert in DATA_DIR/thumbs. */
+/** Kleines WebP-Vorschaubild (Galerie-Kacheln), zwischengespeichert in DATA_DIR/thumbs. rotate(): Handyfotos nach EXIF drehen. */
 export async function thumbnail(abs: string, quality: number): Promise<Buffer> {
   const st = await fs.stat(abs);
   const name = `${Buffer.from(abs).toString("base64url").slice(-80)}_${st.mtimeMs | 0}_${quality}.webp`;
@@ -56,7 +60,7 @@ export async function thumbnail(abs: string, quality: number): Promise<Buffer> {
     return await fs.readFile(cache);
   } catch {}
   const sharp = (await import("sharp")).default;
-  const buf = await sharp(abs).resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).webp({ quality }).toBuffer();
+  const buf = await sharp(abs).rotate().resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).webp({ quality }).toBuffer();
   await fs.mkdir(path.dirname(cache), { recursive: true });
   await fs.writeFile(cache, buf).catch(() => {});
   return buf;

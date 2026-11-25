@@ -75,7 +75,7 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
       const hay = `${l.filename} ${l.title ?? ""} ${l.url}`.toLowerCase();
       return words.every((w) => hay.includes(w));
     })
-    // selbst gespeicherte (neueste zuerst) vor den fest eingebauten, die alphabetisch
+    // zuletzt heruntergeladene zuerst, die fest eingebauten (ohne Datum) danach alphabetisch
     .sort((a, b) => b.savedAt - a.savedAt || a.filename.localeCompare(b.filename, "de"));
   const pages = Math.max(1, Math.ceil(filtered.length / LINKS_PER_PAGE));
   const current = Math.min(page, pages);
@@ -179,6 +179,7 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
                   <p className="break-all">{l.filename}</p>
                   <p className="truncate text-xs text-muted">
                     {MODEL_TYPES[l.type]?.label ?? l.type}
+                    {l.savedAt > 0 ? ` · geladen ${new Date(l.savedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" })}` : ""}
                     {l.title ? ` · ${l.title}` : ""}
                   </p>
                 </div>
