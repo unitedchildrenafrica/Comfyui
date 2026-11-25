@@ -43,6 +43,24 @@ export async function getJobs(ids: string[]): Promise<Record<string, JobRecord>>
   return out;
 }
 
+/** Alle gespeicherten Jobs (auch die, deren Bilder gelöscht sind) */
+export async function listJobs(): Promise<JobRecord[]> {
+  const dir = config.dataPath("jobs");
+  let names: string[];
+  try {
+    names = (await fs.readdir(dir)).filter((n) => n.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const out: JobRecord[] = [];
+  // in Häppchen lesen – bei großen Batches liegen hier tausende Dateien
+  for (let i = 0; i < names.length; i += 200) {
+    const part = await Promise.all(names.slice(i, i + 200).map((n) => readJson<JobRecord | null>(path.join(dir, n), null)));
+    for (const j of part) if (j?.promptId && j.settings && typeof j.createdAt === "number") out.push(j);
+  }
+  return out;
+}
+
 // --- Batches ------------------------------------------------------------------------
 
 export async function saveBatch(batch: BatchRecord) {

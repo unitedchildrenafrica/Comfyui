@@ -12,6 +12,7 @@ import { ensureRefsOnPod } from "./refs";
 import { refLimitError } from "../h3refs";
 import { getAppSettings, saveBatch, saveJob } from "./store";
 import { currentPod, serverMode, withRole } from "./podLink";
+import { type ModelLists, jobFolder, remapJobModels, uniqueModels } from "../restore";
 
 /** Pod, auf dem gerade eingereiht wird (Server-Modus) */
 const podHere = () => (serverMode() ? currentPod()?.id : undefined);
@@ -59,16 +60,9 @@ async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> 
   const items = promptItems(settings, app.defaultNegative);
   const clientId = getClientId();
 
-  let shiftNode: "ModelSamplingAuraFlow" | "ModelSamplingSD3" | null = null;
-  if (settings.generator === "anima" && settings.shiftEnabled) {
-    shiftNode = (await nodeExists("ModelSamplingAuraFlow"))
-      ? "ModelSamplingAuraFlow"
-      : (await nodeExists("ModelSamplingSD3"))
-        ? "ModelSamplingSD3"
-        : null;
-  }
+  const shiftNode = await imageShiftNode(settings);
 
-  const detailer = adetailerWanted(settings) ? await detailerOptions(settings) : undefined;
+  const detailer = await imageDetailer(settings);
 
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };
@@ -209,6 +203,96 @@ async function submitVideoBatchHere(settings: H3Settings): Promise<SubmitResult>
     await saveBatch({ id: batchId, generator: "h3", promptIds: result.promptIds, total: items.length, createdAt: Date.now() });
   }
   return result;
+}
+
+async function imageShiftNode(s: ImageSettings): Promise<"ModelSamplingAuraFlow" | "ModelSamplingSD3" | null> {
+  if (s.generator !== "anima" || !s.shiftEnabled) return null;
+  if (await nodeExists("ModelSamplingAuraFlow")) return "ModelSamplingAuraFlow";
+  if (await nodeExists("ModelSamplingSD3")) return "ModelSamplingSD3";
+  return null;
+}
+
+const imageDetailer = (s: ImageSettings) => (adetailerWanted(s) ? detailerOptions(s) : Promise.resolve(undefined));
+
+/**
+ * „Gelöschte Sets neu generieren“: Jobs mit ihren gespeicherten Einstellungen, Prompts und Seeds
+ * erneut einreihen – gleiche Ordner und Dateinamen. Jede Gruppe (= ein altes Set) wird ein neuer
+ * Batch. Fehlen Modelle auf dem Pod, wird die Gruppe übersprungen statt halb gestartet.
+ */
+export async function resubmitJobs(groups: JobRecord[][], lists: ModelLists): Promise<SubmitResult> {
+  const result: SubmitResult = { batchId: "", promptIds: [], seeds: [], failed: [] };
+  const clientId = getClientId();
+  for (const group of groups) {
+    if (!group.length) continue;
+    const role = group[0].kind === "video" ? "video" : "bild";
+    const name = group.length > 1 ? `${jobFolder(group[0])} (${group.length} Jobs)` : group[0].label;
+    try {
+      const batchId = await withRole(role, () => resubmitGroup(group, lists, clientId, result));
+      if (groups.length === 1 && batchId) result.batchId = batchId;
+    } catch (err) {
+      result.failed.push({
+        name,
+        error: err instanceof Error ? err.message : String(err),
+        node_errors: err instanceof ComfyPromptError ? err.details.node_errors : undefined,
+      });
+    }
+  }
+  return result;
+}
+
+async function resubmitGroup(group: JobRecord[], lists: ModelLists, clientId: string, result: SubmitResult): Promise<string | null> {
+  const remapped = group.map((job) => ({ job, ...remapJobModels(job, lists) }));
+  const missing = uniqueModels(remapped.flatMap((r) => r.missing));
+  if (missing.length) throw new Error(`Modell fehlt auf dem Pod: ${missing.map((m) => m.name).join(", ")}`);
+
+  const batchId = group.length > 1 ? randomUUID().replace(/-/g, "").slice(0, 16) : undefined;
+  const kind = group[0].kind;
+  // Bild: Shift-Node und ADetailer einmal pro Set vom Pod holen (Einstellungen sind im Set gleich)
+  const first = remapped[0].settings;
+  const shiftNode = kind === "image" ? await imageShiftNode(first as ImageSettings) : null;
+  const detailer = kind === "image" ? await imageDetailer(first as ImageSettings) : undefined;
+  if (kind === "video") await ensureRefsOnPod(remapped.flatMap((r) => (r.settings as H3Settings).refs ?? []));
+
+  const ids: string[] = [];
+  for (const [index, { job, settings }] of remapped.entries()) {
+    let wf;
+    if (kind === "video") wf = buildH3({ settings: settings as H3Settings, seed: job.seed });
+    else {
+      const s = settings as ImageSettings;
+      const prompt = job.prompt ?? { positive: s.positive, negative: s.negative, name: job.label || "bild" };
+      const input = { settings: s, prompt, seed: job.seed };
+      wf = s.generator === "anima" ? buildAnima(input, { shiftNode, detailer }) : buildWai(input, { detailer });
+    }
+    try {
+      const promptId = await queuePrompt(wf, clientId);
+      registerPromptNodes(promptId, wf);
+      ids.push(promptId);
+      result.promptIds.push(promptId);
+      result.seeds.push(job.seed);
+      await saveJob({
+        ...job,
+        promptId,
+        podId: podHere(),
+        settings,
+        batchId,
+        index,
+        createdAt: Date.now(),
+        restoredFrom: job.promptId,
+      });
+    } catch (err) {
+      // Scheitert schon der erste Job (z. B. Modell kaputt), scheitern alle → Set abbrechen
+      if (index === 0) throw err;
+      result.failed.push({
+        name: job.label,
+        error: err instanceof Error ? err.message : String(err),
+        node_errors: err instanceof ComfyPromptError ? err.details.node_errors : undefined,
+      });
+    }
+  }
+  if (batchId && ids.length) {
+    await saveBatch({ id: batchId, generator: group[0].generator, promptIds: ids, total: group.length, createdAt: Date.now() });
+  }
+  return batchId ?? null;
 }
 
 /** ADetailer: Eingänge und Erkennungsmodelle vom Pod holen – mit klarer Meldung, wenn etwas fehlt. */

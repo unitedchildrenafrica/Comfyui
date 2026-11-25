@@ -31,14 +31,15 @@ export function takePendingCharacter(): Character | null {
  * Datei über einen gemerkten Link neu laden – unter dem alten Dateinamen, damit Charaktere
  * und Presets weiter passen. Der Link darf eine Civitai-Seite, ein Download- oder HF-Link sein.
  */
-export async function redownload(name: string, url: string, type: ModelType = "lora") {
+export async function redownload(name: string, url: string, type: ModelType = "lora", use?: "image" | "video") {
   const filename = baseName(name);
   const r = await api<Resolved>("/api/models/resolve", { method: "POST", json: { url } });
   const f = r.files.find((x) => x.filename.toLowerCase() === filename.toLowerCase()) ?? r.files.find((x) => x.primary) ?? r.files[0];
   if (!f) throw new Error("Unter dem Link wurde keine Datei gefunden");
   const res = await api<{ errors: string[] }>("/api/models/downloads", {
     method: "POST",
-    json: { items: [{ url: f.url, type, filename, sizeBytes: f.sizeBytes, title: r.title }] },
+    // use "video" → im Server-Modus auf den Video-Pod
+    json: { items: [{ url: f.url, type, filename, sizeBytes: f.sizeBytes, title: r.title, ...(use ? { use } : {}) }] },
   });
   if (res.errors?.length) throw new Error(res.errors.join("; "));
 }

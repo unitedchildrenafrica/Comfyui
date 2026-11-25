@@ -107,6 +107,8 @@ In der **Galerie** einen Ordner wählen (z. B. `wai`, `anima`, `video`) → **�
 
 **Galerie verwalten:** „Verwalten“ oben rechts → Bilder/Videos antippen (oder „Alle“) → **⬇** lädt eins direkt bzw. mehrere als ZIP, **🗑** löscht die Auswahl. Im Verwalten-Modus gibt es außerdem **„Ordner … löschen“** (gewählter Ordner) bzw. **„Ganze Galerie löschen“** (Alle Ordner) – zur Sicherheit nur nach Eintippen von `LÖSCHEN`. Im Server-Modus wird auf dem Server gelöscht; der Spiegel holt gelöschte Dateien nicht erneut vom Pod.
 
+**Gelöschte Sets neu generieren:** Galerie → **„↻ Gelöschte Sets neu generieren“**. Jeder Job liegt mit Prompt, Seed und allen Einstellungen in `DATA_DIR/jobs` – auch wenn die Bilder gelöscht sind. Die Seite zeigt die Sets (ein Batch = ein Set, Einzelbilder je Ordner und Tag), neueste zuerst, filterbar nach Ordner, mit Status der Modelle (✓ auf dem Pod, ⬇ über gespeicherten Link nachladbar, ✗ kein Link). Ausgewählte Sets werden mit Original-Seeds in denselben Ordner unter denselben Namen eingereiht; liegt ein Modell nach dem Neu-Laden in einem anderen Unterordner, wird es trotzdem gefunden. Fehlt ein Modell, wird nur dieses Set übersprungen. Videos landen im Ordner `video/<heutiges Datum>`.
+
 **Favoriten sind geschützt:** Wird ein Favorit aus der Galerie gelöscht (einzeln, Auswahl, Ordner oder „Ganze Galerie“), verschwindet er aus „Alle“ und den Ordnern, bleibt aber unter ⭐ – die Datei wandert in `DATA_DIR/favorites-files`. Endgültig weg ist er erst, wenn er unter ⭐ gelöscht bzw. der Stern entfernt wird.
 
 ### 6b. Notizen (Aufträge, Posten, Charaktere …)

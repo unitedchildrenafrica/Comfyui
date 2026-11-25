@@ -139,6 +139,8 @@ export interface JobRecord {
   index?: number;
   label: string;
   createdAt: number;
+  /** „Gelöschte Sets neu generieren“: prompt_id des Original-Jobs */
+  restoredFrom?: string;
 }
 
 export interface BatchRecord {

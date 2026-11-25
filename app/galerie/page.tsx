@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ComfyDown, ErrorBox, Segmented, Select } from "@/components/ui";
 import { api, ApiError, viewUrl } from "@/lib/client";
@@ -240,6 +241,11 @@ export default function GalleryPage() {
         }}
       />
       {kind !== "fav" && <Select value={folder} onChange={setFolder} options={[{ value: "", label: "Alle Ordner" }, ...folders]} />}
+      {kind !== "fav" && (
+        <Link href="/galerie/neu-generieren" className="block px-1 text-sm text-accent underline">
+          ↻ Gelöschte Sets neu generieren
+        </Link>
+      )}
       {manage && (
         <section className="card space-y-2 p-3">
           <p className="text-sm text-muted">Bilder antippen zum Auswählen. Unten herunterladen oder löschen.</p>
