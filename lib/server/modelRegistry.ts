@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { MODEL_TYPES, type ModelType } from "../modelLinks";
 import { baseName, stripTokens } from "../notes";
+import { SETUP_LORA_LINKS } from "../setupLinks";
 import { config } from "./config";
 
 // Merkliste: Jede Datei, die einmal über „Modelle laden“ kam, behält ihren Download-Link.
@@ -15,6 +16,8 @@ export interface ModelLink {
   url: string;
   title?: string;
   savedAt: number;
+  /** fest eingebaut (Krea 2, LoRAs aus pod/setup.sh) – lässt sich nicht löschen */
+  builtin?: boolean;
 }
 
 const FILE = () => config.dataPath("model-links.json");
@@ -26,13 +29,15 @@ const CIVITAI = "https://civitai.red/api/download/models";
  * Immer bekannte Links (Krea 2), damit die Dateien auf jedem frischen Pod per Tipp nachladbar sind.
  * Selbst gemerkte Links mit gleichem Dateinamen gehen vor.
  */
-export const BUILTIN_MODEL_LINKS: ModelLink[] = [
+export const BUILTIN_MODEL_LINKS: ModelLink[] = ([
   { filename: "krea2_turbo_fp8_scaled.safetensors", type: "unet", url: `${HF_KREA}/diffusion_models/krea2_turbo_fp8_scaled.safetensors`, title: "Krea 2 Turbo (fp8)", savedAt: 0 },
   { filename: "qwen3vl_4b_fp8_scaled.safetensors", type: "text_encoder", url: `${HF_KREA}/text_encoders/qwen3vl_4b_fp8_scaled.safetensors`, title: "Krea 2 Text-Encoder (Qwen3-VL 4B)", savedAt: 0 },
   { filename: "qwen_image_vae.safetensors", type: "vae", url: `${HF_KREA}/vae/qwen_image_vae.safetensors`, title: "Qwen-Image-VAE (Krea 2, Anima)", savedAt: 0 },
   { filename: "krea2_nsfw_v2.safetensors", type: "lora", url: `${CIVITAI}/3065362`, title: "Krea 2 NSFW v2", savedAt: 0 },
   { filename: "krea2_turbo_nsfw.safetensors", type: "lora", url: `${CIVITAI}/3081369`, title: "Krea 2 Turbo NSFW", savedAt: 0 },
-];
+  // LoRAs, die pod/setup.sh lädt – damit alle LoRA-Links an einer Stelle stehen
+  ...SETUP_LORA_LINKS.map((l) => ({ ...l, type: "lora" as const, title: "aus dem Pod-Setup", savedAt: 0 })),
+] as ModelLink[]).map((l) => ({ ...l, builtin: true }));
 
 async function storedLinks(): Promise<Record<string, ModelLink>> {
   try {

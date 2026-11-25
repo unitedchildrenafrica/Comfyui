@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorBox, Field, ProgressBar, Select, WarnBox } from "@/components/ui";
+import { ErrorBox, Field, ProgressBar, Segmented, Select, WarnBox } from "@/components/ui";
 import { useOptions } from "@/hooks/useOptions";
 import { redownload } from "@/lib/characterTools";
 import { api, ApiError } from "@/lib/client";
 import { classifyLora, guessUseFromBaseModel, type LoraUse } from "@/lib/loraKinds";
 import { findAvailable } from "@/lib/notes";
+import { pageNumbers } from "@/lib/paging";
 import type { Options } from "@/lib/server/options";
 import { MODEL_TYPES, type ModelType } from "@/lib/modelLinks";
 import type { DownloadJob, Resolved, ResolvedFile } from "@/lib/server/downloads";
@@ -29,6 +30,7 @@ interface ModelLink {
   url: string;
   title?: string;
   savedAt: number;
+  builtin?: boolean;
 }
 
 /** Liste des Pods zum Typ – null, wenn es keine gibt (dann ist der Status unbekannt) */
@@ -45,11 +47,16 @@ function podList(o: Options | null, type: ModelType): string[] | null {
   return map[type] ?? null;
 }
 
-/** Merkliste: einmal geladene Dateien mit Link – fehlende mit einem Tipp neu laden. */
+const LINKS_PER_PAGE = 15;
+
+/** Alle gespeicherten Links (LoRAs zuerst): suchen, blättern, fehlende mit einem Tipp neu laden. */
 function SavedLinks({ options, reload, onStarted }: { options: Options | null; reload: () => void; onStarted: () => void }) {
   const [links, setLinks] = useState<ModelLink[]>([]);
-  const [state, setState] = useState<Record<string, { busy?: boolean; ok?: boolean; error?: string }>>({});
-  const [showAll, setShowAll] = useState(false);
+  const [state, setState] = useState<Record<string, { busy?: boolean; ok?: boolean; error?: string; copied?: boolean }>>({});
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<"lora" | "all">("lora");
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const [page, setPage] = useState(1);
 
   const load = useCallback(() => {
     api<{ links: ModelLink[] }>("/api/model-links").then((r) => setLinks(r.links), () => {});
@@ -60,9 +67,22 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
     const list = podList(options, l.type);
     return list ? (findAvailable(l.filename, list) ? "here" : "missing") : "unknown";
   };
-  // Fest hinterlegte Links (Krea 2, savedAt 0) nicht mit „Alle fehlenden“ laden – nicht jeder Pod braucht sie
-  const missing = links.filter((l) => status(l) === "missing" && !state[l.filename]?.ok && l.savedAt !== 0);
-  const shown = showAll ? links : links.filter((l) => status(l) !== "here");
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = links
+    .filter((l) => kind === "all" || l.type === "lora")
+    .filter((l) => !onlyMissing || status(l) === "missing")
+    .filter((l) => {
+      const hay = `${l.filename} ${l.title ?? ""} ${l.url}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    })
+    // selbst gespeicherte (neueste zuerst) vor den fest eingebauten, die alphabetisch
+    .sort((a, b) => b.savedAt - a.savedAt || a.filename.localeCompare(b.filename, "de"));
+  const pages = Math.max(1, Math.ceil(filtered.length / LINKS_PER_PAGE));
+  const current = Math.min(page, pages);
+  const shown = filtered.slice((current - 1) * LINKS_PER_PAGE, current * LINKS_PER_PAGE);
+  // Fest hinterlegte Links nicht mit „Alle fehlenden“ laden – nicht jeder Pod braucht sie
+  const missing = filtered.filter((l) => status(l) === "missing" && !state[l.filename]?.ok && !l.builtin);
+  const missingTotal = links.filter((l) => (kind === "all" || l.type === "lora") && status(l) === "missing").length;
 
   const get = async (l: ModelLink) => {
     setState((s) => ({ ...s, [l.filename]: { busy: true } }));
@@ -78,58 +98,149 @@ function SavedLinks({ options, reload, onStarted }: { options: Options | null; r
     if (!window.confirm(`Link für ${l.filename} vergessen?`)) return;
     setLinks((await api<{ links: ModelLink[] }>(`/api/model-links?filename=${encodeURIComponent(l.filename)}`, { method: "DELETE" })).links);
   };
+  const copy = async (l: ModelLink) => {
+    try {
+      await navigator.clipboard.writeText(l.url);
+      setState((s) => ({ ...s, [l.filename]: { ...s[l.filename], copied: true } }));
+      setTimeout(() => setState((s) => ({ ...s, [l.filename]: { ...s[l.filename], copied: false } })), 1500);
+    } catch {
+      window.prompt("Link kopieren:", l.url);
+    }
+  };
+  const goto = (p: number) => {
+    setPage(p);
+    document.getElementById("saved-links")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   if (!links.length) return null;
   return (
-    <section className="card space-y-3 p-4">
+    <section id="saved-links" className="card scroll-mt-3 space-y-3 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold">Früher geladen</h2>
+        <h2 className="font-semibold">Gespeicherte Links</h2>
         <button type="button" className="text-xs text-accent underline" onClick={reload}>
           ↻ prüfen
         </button>
       </div>
       <p className="text-xs text-muted">
-        Jede Datei, die hier einmal geladen wurde, behält ihren Link. Fehlt sie auf dem Pod (gelöscht oder neuer Pod), lädt „Neu laden“ sie unter demselben Namen.
+        Jede Datei, die hier geladen wurde, behält ihren Link, dazu alle LoRAs aus dem Pod-Setup. Fehlt eine auf dem Pod, lädt „Neu laden“ sie unter demselben Namen.
       </p>
+      <input
+        type="search"
+        className="input"
+        placeholder="Suchen (Name, Titel, Link) …"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setPage(1);
+        }}
+      />
+      <div className="space-y-1">
+        <Segmented
+          value={kind}
+          options={[
+            { value: "lora", label: `LoRAs (${links.filter((l) => l.type === "lora").length})` },
+            { value: "all", label: `Alle (${links.length})` },
+          ]}
+          onChange={(v) => {
+            setKind(v);
+            setPage(1);
+          }}
+        />
+        <label className="flex min-h-11 items-center gap-2 text-sm text-soft">
+          <input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={onlyMissing}
+            onChange={(e) => {
+              setOnlyMissing(e.target.checked);
+              setPage(1);
+            }}
+          />
+          nur fehlende{missingTotal ? ` (${missingTotal})` : ""}
+        </label>
+      </div>
       {missing.length > 1 && (
         <button type="button" className="btn btn-primary w-full" onClick={() => missing.forEach(get)}>
           ⬇ Alle fehlenden neu laden ({missing.length})
         </button>
       )}
-      {!shown.length && <p className="text-sm text-emerald-300">✓ Alles da.</p>}
-      <ul className="space-y-2">
+      {!filtered.length && <p className="text-sm text-muted">{words.length ? "Nichts gefunden." : onlyMissing ? "✓ Nichts fehlt." : "Keine Links."}</p>}
+      <ul className="divide-y divide-line">
         {shown.map((l) => {
           const st = status(l);
           const s = state[l.filename];
           return (
-            <li key={l.filename} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-              <span className={st === "missing" ? "text-red-300" : st === "here" ? "text-emerald-300" : "text-muted"}>{st === "missing" ? "✗" : st === "here" ? "✓" : "•"}</span>
-              <span className="min-w-0 flex-1 truncate">
-                {l.filename} <span className="text-xs text-muted">{MODEL_TYPES[l.type]?.folder}</span>
-              </span>
-              {st !== "here" &&
-                (s?.ok ? (
-                  <span className="text-xs text-emerald-300">läuft ↓</span>
-                ) : (
-                  <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs text-soft" disabled={s?.busy} onClick={() => get(l)}>
-                    {s?.busy ? "…" : "⬇ Neu laden"}
-                  </button>
-                ))}
-              {l.savedAt !== 0 ? (
-                <button type="button" className="h-9 w-8 text-muted" aria-label="Link vergessen" onClick={() => forget(l)}>
-                  ✕
+            <li key={l.filename} className="space-y-1 py-2 text-sm">
+              <div className="flex items-start gap-2">
+                <span className={`pt-0.5 ${st === "missing" ? "text-red-300" : st === "here" ? "text-emerald-300" : "text-muted"}`} title={st === "here" ? "auf dem Pod" : st === "missing" ? "fehlt auf dem Pod" : "Pod unbekannt"}>
+                  {st === "missing" ? "✗" : st === "here" ? "✓" : "•"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="break-all">{l.filename}</p>
+                  <p className="truncate text-xs text-muted">
+                    {MODEL_TYPES[l.type]?.label ?? l.type}
+                    {l.title ? ` · ${l.title}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pl-5">
+                {st !== "here" &&
+                  (s?.ok ? (
+                    <span className="text-xs text-emerald-300">läuft ↓</span>
+                  ) : (
+                    <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs text-soft" disabled={s?.busy} onClick={() => get(l)}>
+                      {s?.busy ? "…" : "⬇ Neu laden"}
+                    </button>
+                  ))}
+                <button type="button" className="h-9 rounded-lg border border-line px-3 text-xs text-soft" onClick={() => copy(l)}>
+                  {s?.copied ? "✓ kopiert" : "📋 Link"}
                 </button>
-              ) : (
-                <span className="text-xs text-muted">fest</span>
-              )}
-              {s?.error && <span className="w-full text-xs text-red-300">{s.error}</span>}
+                <span className="min-w-0 flex-1 truncate text-xs text-muted">{l.url.replace(/^https?:\/\//, "")}</span>
+                {l.builtin ? (
+                  <span className="text-xs text-muted">fest</span>
+                ) : (
+                  <button type="button" className="h-9 w-8 text-muted" aria-label="Link vergessen" onClick={() => forget(l)}>
+                    ✕
+                  </button>
+                )}
+              </div>
+              {s?.error && <p className="pl-5 text-xs text-red-300">{s.error}</p>}
             </li>
           );
         })}
       </ul>
-      <button type="button" className="w-full text-xs text-muted underline" onClick={() => setShowAll(!showAll)}>
-        {showAll ? "nur fehlende zeigen" : `alle zeigen (${links.length})`}
-      </button>
+      {pages > 1 && (
+        <nav className="flex flex-wrap items-center justify-center gap-1" aria-label="Seiten">
+          <button type="button" className="h-10 min-w-10 rounded-lg border border-line px-2 text-sm text-soft disabled:opacity-40" disabled={current === 1} onClick={() => goto(current - 1)} aria-label="Vorherige Seite">
+            ‹
+          </button>
+          {pageNumbers(current, pages).map((n, i) =>
+            n === "…" ? (
+              <span key={`e${i}`} className="px-1 text-muted">
+                …
+              </span>
+            ) : (
+              <button
+                key={n}
+                type="button"
+                className={`h-10 min-w-10 rounded-lg border px-2 text-sm ${n === current ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
+                onClick={() => goto(n)}
+                aria-current={n === current ? "page" : undefined}
+              >
+                {n}
+              </button>
+            ),
+          )}
+          <button type="button" className="h-10 min-w-10 rounded-lg border border-line px-2 text-sm text-soft disabled:opacity-40" disabled={current === pages} onClick={() => goto(current + 1)} aria-label="Nächste Seite">
+            ›
+          </button>
+        </nav>
+      )}
+      {filtered.length > 0 && (
+        <p className="text-center text-xs text-muted">
+          {(current - 1) * LINKS_PER_PAGE + 1}–{Math.min(current * LINKS_PER_PAGE, filtered.length)} von {filtered.length}
+        </p>
+      )}
     </section>
   );
 }
