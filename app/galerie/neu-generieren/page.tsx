@@ -214,10 +214,10 @@ export default function RestorePage() {
                     </ul>
                   </div>
                   <div>
-                    <p className="mb-1 text-xs text-muted">Namen ({s.names.length})</p>
+                    <p className="mb-1 text-xs text-muted">Namen ({s.jobs})</p>
                     <p className="text-xs text-soft">
                       {s.names.slice(0, 12).join(", ")}
-                      {s.names.length > 12 ? ` … +${s.names.length - 12}` : ""}
+                      {s.jobs > 12 ? ` … +${s.jobs - 12}` : ""}
                     </p>
                   </div>
                   <div>

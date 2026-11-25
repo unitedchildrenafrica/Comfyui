@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { builtinPresets } from "@/lib/defaults";
-import { groupSets, jobModels, remapJobModels, type ModelLists } from "@/lib/restore";
+import { groupSets as groupLite, jobModels, remapJobModels, summarizeJob, type ModelLists } from "@/lib/restore";
 import type { H3Settings, ImageSettings, JobRecord } from "@/lib/types";
 
 const base = Object.values(builtinPresets())[0] as ImageSettings;
 const img = (over: Partial<ImageSettings> = {}): ImageSettings => ({ ...base, generator: "wai", folder: "wai/lisa", ...over });
+
+const groupSets = (js: JobRecord[], present: Set<string>, tz = 0) => groupLite(js.map(summarizeJob), present, tz);
 
 let n = 0;
 function job(over: Partial<JobRecord> & { settings?: ImageSettings | H3Settings } = {}): JobRecord {
@@ -39,6 +41,8 @@ describe("groupSets", () => {
     expect(batch.promptIds).toEqual([a1.promptId, a2.promptId]);
     expect(batch.present).toBe(1);
     expect(batch.names).toEqual([a1.label, a2.label]);
+    // Modelle des Sets einmal, nicht pro Job
+    expect(batch.needs.filter((m) => m.type === "checkpoint")).toHaveLength(1);
   });
 
   it("Tagesgrenze in der Zeitzone des Handys", () => {

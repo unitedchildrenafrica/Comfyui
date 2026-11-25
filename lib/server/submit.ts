@@ -90,6 +90,7 @@ async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> 
 
   const batchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const result: SubmitResult = { batchId, promptIds: [], seeds: [], failed: [] };
+  const jobSettings: ImageSettings = { ...settings, batchText: "" };
 
   for (const [index, prompt] of items.entries()) {
     const seed = settings.seed ?? randomSeed();
@@ -110,7 +111,9 @@ async function submitImageJobsHere(input: ImageSettings): Promise<SubmitResult> 
         podId: podHere(),
         kind: "image",
         generator: settings.generator,
-        settings,
+        // Den Prompt hat jeder Job selbst – den ganzen Batch-Text nicht in jede Job-Datei kopieren
+        // (200 Prompts × 200 Jobs wären sonst Dutzende MB pro Batch)
+        settings: jobSettings,
         prompt,
         seed,
         batchId: items.length > 1 ? batchId : undefined,
@@ -308,7 +311,7 @@ async function resubmitGroup(group: JobRecord[], lists: ModelLists, clientId: st
         ...job,
         promptId,
         podId: podHere(),
-        settings,
+        settings: kind === "image" ? { ...(settings as ImageSettings), batchText: "" } : settings,
         batchId,
         index,
         createdAt: Date.now(),

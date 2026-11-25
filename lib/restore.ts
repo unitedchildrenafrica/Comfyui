@@ -37,7 +37,8 @@ export interface RestoreSet {
   restored: number;
   preview: string;
   names: string[];
-  promptIds: string[];
+  /** nur serverseitig – geht nicht an den Browser */
+  promptIds?: string[];
   models: (ModelNeed & { status: ModelStatus; url?: string })[];
 }
 
@@ -119,24 +120,66 @@ export function remapJobModels<T extends ImageSettings | H3Settings>(job: JobRec
   return { settings, missing: uniqueModels(missing) };
 }
 
+/**
+ * Kleine Zusammenfassung eines Jobs für die Set-Liste. Alte Batch-Jobs tragen den kompletten
+ * Batch-Text in sich (bei 200 Prompts × 200 Jobs Hunderte MB) – deshalb nie alle Jobs ganz im
+ * Speicher halten, sondern nur das hier.
+ */
+export interface JobLite {
+  promptId: string;
+  kind: "image" | "video";
+  generator: JobRecord["generator"];
+  folder: string;
+  createdAt: number;
+  batchId?: string;
+  index?: number;
+  label: string;
+  restoredFrom?: string;
+  perJob: number;
+  preview: string;
+  models: ModelNeed[];
+}
+
+export function summarizeJob(job: JobRecord): JobLite {
+  const img = job.kind === "image" ? (job.settings as ImageSettings) : null;
+  const preview = job.prompt?.positive || (job.kind === "video" ? videoPreview(job.settings as H3Settings) : "") || job.label || "";
+  return {
+    promptId: job.promptId,
+    kind: job.kind,
+    generator: job.generator,
+    folder: jobFolder(job),
+    createdAt: job.createdAt,
+    ...(job.batchId ? { batchId: job.batchId } : {}),
+    ...(job.index !== undefined ? { index: job.index } : {}),
+    label: job.label,
+    ...(job.restoredFrom ? { restoredFrom: job.restoredFrom } : {}),
+    perJob: img ? Math.max(1, img.batchSize || 1) : 1,
+    preview: preview.slice(0, 300),
+    models: jobModels(job),
+  };
+}
+
 /** Schlüssel des Sets, zu dem ein Job gehört: Batch, sonst Einzelbilder je Ordner und Tag */
-export function setKey(job: JobRecord, tzOffsetMin = 0): string {
+export function setKey(job: Pick<JobLite, "batchId" | "createdAt" | "kind" | "folder">, tzOffsetMin = 0): string {
   if (job.batchId) return `b:${job.batchId}`;
   const day = new Date(job.createdAt - tzOffsetMin * 60_000).toISOString().slice(0, 10);
-  return `s:${job.kind}:${jobFolder(job)}:${day}`;
+  return `s:${job.kind}:${job.folder}:${day}`;
 }
+
+/** Höchstens so viele Namen pro Set an den Browser schicken */
+export const MAX_NAMES = 60;
 
 /**
  * Jobs zu Sets zusammenfassen, neueste zuerst. present = prompt_ids mit Dateien in der Galerie.
  * Neu gestartete Jobs (restoredFrom) zählen beim Original als „schon neu gestartet“.
  */
-export function groupSets(jobs: JobRecord[], present: Set<string>, tzOffsetMin = 0): Omit<RestoreSet, "models">[] {
+export function groupSets(jobs: JobLite[], present: Set<string>, tzOffsetMin = 0): (Omit<RestoreSet, "models"> & { needs: ModelNeed[]; promptIds: string[] })[] {
   const restoredFrom = new Set(jobs.map((j) => j.restoredFrom).filter(Boolean) as string[]);
   // Neu gestartete Kopien nicht als eigenes Set zeigen, solange das Original da ist –
   // sonst stehen sie während der Queue als „gelöscht“ da und werden doppelt gestartet
   const ids = new Set(jobs.map((j) => j.promptId));
   const visible = jobs.filter((j) => !j.restoredFrom || !ids.has(j.restoredFrom));
-  const groups = new Map<string, JobRecord[]>();
+  const groups = new Map<string, JobLite[]>();
   for (const j of [...visible].sort((a, b) => a.createdAt - b.createdAt || (a.index ?? 0) - (b.index ?? 0))) {
     const k = setKey(j, tzOffsetMin);
     const g = groups.get(k);
@@ -146,24 +189,20 @@ export function groupSets(jobs: JobRecord[], present: Set<string>, tzOffsetMin =
   return [...groups.entries()]
     .map(([key, list]) => {
       const first = list[0];
-      const img = first.kind === "image" ? (first.settings as ImageSettings) : null;
-      const preview =
-        first.prompt?.positive ??
-        (first.kind === "video" ? videoPreview(first.settings as H3Settings) : "") ??
-        first.label;
       return {
         key,
         kind: first.kind,
         generator: first.generator,
-        folder: jobFolder(first),
+        folder: first.folder,
         createdAt: first.createdAt,
         jobs: list.length,
-        perJob: img ? Math.max(1, img.batchSize || 1) : 1,
+        perJob: first.perJob,
         present: list.filter((j) => present.has(j.promptId)).length,
         restored: list.filter((j) => restoredFrom.has(j.promptId)).length,
-        preview: (preview || first.label || "").slice(0, 300),
-        names: list.map((j) => j.label),
+        preview: first.preview,
+        names: list.slice(0, MAX_NAMES).map((j) => j.label),
         promptIds: list.map((j) => j.promptId),
+        needs: uniqueModels(list.flatMap((j) => j.models)),
       };
     })
     .sort((a, b) => b.createdAt - a.createdAt);

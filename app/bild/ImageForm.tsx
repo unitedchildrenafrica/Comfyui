@@ -88,7 +88,8 @@ export function ImageForm() {
             seed: job.seed,
           };
           setGenerator(g);
-          setAll((a) => ({ ...a, [g]: restored }));
+          // Batch-Text steht nicht (mehr) im Job – den aktuellen im Formular behalten
+          setAll((a) => ({ ...a, [g]: { ...restored, batchText: restored.batchText || a[g]?.batchText || "" } }));
         })
         .catch(() => {});
     }

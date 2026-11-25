@@ -1,11 +1,14 @@
 import { promises as fs } from "node:fs";
-import { type ModelLists, type ModelStatus, type RestoreSet, groupSets, jobModels, lookup, uniqueModels } from "../restore";
+import path from "node:path";
+import { type JobLite, type ModelLists, type ModelStatus, type RestoreSet, groupSets, lookup, summarizeJob } from "../restore";
+import type { JobRecord } from "../types";
+import { config } from "./config";
 import { getHistory } from "./history";
 import { deletedMap, isDeleted, listMirrored } from "./mirror";
 import { findLink, getModelLinks } from "./modelRegistry";
 import { getOptions } from "./options";
 import { serverMode } from "./podLink";
-import { listJobs } from "./store";
+import { getJob } from "./store";
 import { resolveOutputFile } from "./zip";
 
 /** Modelllisten der Pods (Bild-Pod / Video-Pod). null = kein Pod erreichbar */
@@ -54,11 +57,46 @@ async function presentPromptIds(): Promise<Set<string>> {
   return out;
 }
 
+// Zusammenfassungen je Job-Datei, gemerkt nach Änderungszeit und Größe. So wird jede Datei nur
+// einmal gelesen und nie alle Jobs gleichzeitig ganz im Speicher gehalten (alte Batch-Jobs
+// enthalten den kompletten Batch-Text – zusammen leicht Hunderte MB → Absturz, HTTP 502).
+const g = globalThis as unknown as { __jobLite?: Map<string, { mtimeMs: number; size: number; lite: JobLite | null }> };
+const liteCache = (g.__jobLite ??= new Map());
+
+export async function jobSummaries(): Promise<JobLite[]> {
+  const dir = config.dataPath("jobs");
+  let names: string[];
+  try {
+    names = (await fs.readdir(dir)).filter((n) => n.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const seen = new Set(names);
+  for (const k of liteCache.keys()) if (!seen.has(k)) liteCache.delete(k);
+  // in kleinen Häppchen – höchstens ein paar Dateien gleichzeitig im Speicher
+  for (let i = 0; i < names.length; i += 16) {
+    await Promise.all(
+      names.slice(i, i + 16).map(async (name) => {
+        const abs = path.join(dir, name);
+        const st = await fs.stat(abs).catch(() => null);
+        if (!st) return;
+        const hit = liteCache.get(name);
+        if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return;
+        let lite: JobLite | null = null;
+        try {
+          const job = JSON.parse(await fs.readFile(abs, "utf8")) as JobRecord;
+          if (job?.promptId && job.settings && typeof job.createdAt === "number") lite = summarizeJob(job);
+        } catch {}
+        liteCache.set(name, { mtimeMs: st.mtimeMs, size: st.size, lite });
+      }),
+    );
+  }
+  return [...liteCache.values()].map((v) => v.lite).filter((l): l is JobLite => !!l);
+}
+
 export async function listRestoreSets(tzOffsetMin: number): Promise<{ sets: RestoreSet[]; podOnline: boolean }> {
-  const [jobs, present, lists, links] = await Promise.all([listJobs(), presentPromptIds(), podModelLists(), getModelLinks()]);
-  const byId = new Map(jobs.map((j) => [j.promptId, j]));
-  const sets = groupSets(jobs, present, tzOffsetMin).map((s) => {
-    const needs = uniqueModels(s.promptIds.flatMap((id) => jobModels(byId.get(id)!)));
+  const [jobs, present, lists, links] = await Promise.all([jobSummaries(), presentPromptIds(), podModelLists(), getModelLinks()]);
+  const sets = groupSets(jobs, present, tzOffsetMin).map(({ needs, promptIds: _ids, ...s }) => {
     const models = needs.map((m) => {
       const found = lookup(lists, m);
       const link = findLink(links, m.name);
@@ -71,12 +109,16 @@ export async function listRestoreSets(tzOffsetMin: number): Promise<{ sets: Rest
 }
 
 /** Jobs der gewählten Sets, in Set-Reihenfolge (ältestes Set zuerst, damit die Queue chronologisch ist) */
-export async function jobsForSets(keys: string[], tzOffsetMin: number) {
-  const jobs = await listJobs();
-  const byId = new Map(jobs.map((j) => [j.promptId, j]));
+export async function jobsForSets(keys: string[], tzOffsetMin: number): Promise<JobRecord[][]> {
   const want = new Set(keys);
-  return groupSets(jobs, new Set(), tzOffsetMin)
+  const chosen = groupSets(await jobSummaries(), new Set(), tzOffsetMin)
     .filter((s) => want.has(s.key))
-    .reverse()
-    .map((s) => s.promptIds.map((id) => byId.get(id)!));
+    .reverse();
+  const out: JobRecord[][] = [];
+  // nur die gewählten Jobs ganz laden
+  for (const s of chosen) {
+    const jobs = (await Promise.all(s.promptIds.map((id) => getJob(id)))).filter((j): j is JobRecord => !!j);
+    if (jobs.length) out.push(jobs);
+  }
+  return out;
 }
