@@ -86,6 +86,15 @@ if [ "${1:-}" = patreon ]; then
   exit 0
 fi
 
+# bash setup-server.sh secret → POD_SECRET (für das Vast-Pod-Template) ganz anzeigen, sonst nichts
+if [ "${1:-}" = secret ]; then
+  [ -n "$(get POD_SECRET)" ] || { echo "Noch kein POD_SECRET – erst „bash $0“ ausführen"; exit 1; }
+  echo "Im Vast-Pod-Template eintragen:"
+  echo "  VPS_URL     = https://comfy.comfyusel.uk"
+  echo "  POD_SECRET  = $(get POD_SECRET)"
+  exit 0
+fi
+
 # bash setup-server.sh discord → Discord-Bot-Token eintragen (Inner Circle: Discord-Namen automatisch)
 if [ "${1:-}" = discord ]; then
   echo "Token eines Discord-Bots (discord.com/developers → Applications → dein Bot → Bot → Reset Token)."
@@ -104,7 +113,8 @@ fi
 ask GH_TOKEN "GitHub-Token (github_pat_…)"
 ask APP_PASSWORD "Passwort für die App"
 ask CF_TUNNEL_TOKEN "Cloudflare-Tunnel-Token für comfy.comfyusel.uk (eyJ…)"
-[ -n "$(get POD_SECRET)" ] || put POD_SECRET "$(random)"
+NEW_SECRET=""
+[ -n "$(get POD_SECRET)" ] || { put POD_SECRET "$(random)"; NEW_SECRET=1; }
 [ -n "$(get SESSION_SECRET)" ] || put SESSION_SECRET "$(random)"
 [ -n "$(get DISCORD_WEBHOOK_URL)" ] || [ -z "${DISCORD_WEBHOOK_URL:-}" ] || put DISCORD_WEBHOOK_URL "$DISCORD_WEBHOOK_URL"
 put SERVER_MODE 1
@@ -208,16 +218,23 @@ for _ in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:3000/api/health 
 if curl -fs -o /dev/null http://127.0.0.1:3000/api/health; then log "App läuft."; else log "WARNUNG: App antwortet nicht – journalctl -u pod-frontend -n 50"; fi
 systemctl is-active --quiet pod-frontend-tunnel && log "Tunnel läuft." || log "WARNUNG: Tunnel läuft nicht – journalctl -u pod-frontend-tunnel -n 50"
 
+# POD_SECRET nur ganz zeigen, wenn er gerade neu erzeugt wurde (dann muss er ins Pod-Template) –
+# sonst gekürzt: er öffnet die App ohne Passwort und soll nicht bei jedem Update im Terminal stehen
 POD_SECRET=$(get POD_SECRET)
+if [ -n "$NEW_SECRET" ]; then
+  SECRET_TEXT=" Im Vast-Pod-Template jetzt eintragen (NEUER Wert):
+   VPS_URL     = https://comfy.comfyusel.uk
+   POD_SECRET  = $POD_SECRET
+ und CF_TUNNEL_TOKEN dort ENTFERNEN (der Tunnel läuft jetzt hier)."
+else
+  SECRET_TEXT=" POD_SECRET unverändert (${POD_SECRET:0:4}…${POD_SECRET: -4}) – ganz anzeigen: bash $0 secret"
+fi
 cat <<EOF
 
 ==================================================================
  Fertig. Die App läuft unter https://comfy.comfyusel.uk
 
- Im Vast-Pod-Template jetzt eintragen:
-   VPS_URL     = https://comfy.comfyusel.uk
-   POD_SECRET  = $POD_SECRET
- und CF_TUNNEL_TOKEN dort ENTFERNEN (der Tunnel läuft jetzt hier).
+$SECRET_TEXT
 
  Update später:   bash $0
  Logs:            journalctl -u pod-frontend -f

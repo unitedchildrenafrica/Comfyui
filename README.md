@@ -166,7 +166,7 @@ Handy ──► comfy.comfyusel.uk ──► Server (App, Galerie, Bots)
 curl -fsSL -H "Authorization: Bearer DEIN_GH_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/unitedchildrenafrica/Comfyui/contents/server/setup-server.sh?ref=main" -o /root/setup-server.sh && bash /root/setup-server.sh
 ```
 
-Beim ersten Mal fragt das Skript nach GitHub-Token, App-Passwort und dem bisherigen `CF_TUNNEL_TOKEN`. Am Ende zeigt es das **POD_SECRET** an. Es richtet App und Tunnel als systemd-Dienste ein: Start beim Booten, Neustart bei Absturz, max. 1,5 GB RAM, damit Platz für die Bots bleibt. **Update:** `bash /root/setup-server.sh` erneut ausführen.
+Beim ersten Mal fragt das Skript nach GitHub-Token, App-Passwort und dem bisherigen `CF_TUNNEL_TOKEN` und zeigt das **POD_SECRET** an (bei späteren Updates nur gekürzt; ganz anzeigen: `bash /root/setup-server.sh secret`). Es richtet App und Tunnel als systemd-Dienste ein: Start beim Booten, Neustart bei Absturz, max. 1,5 GB RAM, damit Platz für die Bots bleibt. **Update:** `bash /root/setup-server.sh` erneut ausführen.
 
 **2. Im Vast-Template:**
 - **eintragen:** `VPS_URL=https://comfy.comfyusel.uk` und `POD_SECRET=…` (aus Schritt 1)
