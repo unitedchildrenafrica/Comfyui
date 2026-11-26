@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { type CircleRow, type CircleStore, type ManualMember, type Tri, buildRows, migrateAcks } from "../circle";
+import { type CircleRow, type CircleStore, type ManualMember, type Tri, buildRows, carriesStart, migrateAcks } from "../circle";
 import type { PatreonTier } from "../patreon";
 import { config } from "./config";
 import { getAcks, getSnapshot, getTrackedTiers, patreonConfigured, patreonError } from "./patreon";
@@ -22,13 +22,22 @@ export interface CircleView {
   rows: CircleRow[];
 }
 
+/** Nur „Datei gibt es noch nicht“ heißt leer. Kaputt oder nicht lesbar → Fehler, damit nie ein leerer Stand die Daten überschreibt. */
 export async function getStore(): Promise<CircleStore> {
+  let raw: string;
   try {
-    const s = JSON.parse(await fs.readFile(FILE(), "utf8")) as Partial<CircleStore>;
-    return { people: s.people ?? {}, cycles: s.cycles ?? {}, ...(s.acksMigrated ? { acksMigrated: true } : {}) };
-  } catch {
-    return { people: {}, cycles: {} };
+    raw = await fs.readFile(FILE(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { people: {}, cycles: {} };
+    throw err;
   }
+  let s: Partial<CircleStore>;
+  try {
+    s = JSON.parse(raw) as Partial<CircleStore>;
+  } catch {
+    throw new Error("inner-circle.json ist beschädigt – bitte nicht weiter ändern und die Datei prüfen (es wurde nichts überschrieben)");
+  }
+  return { people: s.people ?? {}, cycles: s.cycles ?? {}, ...(s.acksMigrated ? { acksMigrated: true } : {}) };
 }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -133,8 +142,12 @@ export async function setCycleField(key: string, cycleId: string, field: "contac
   await assertKnown(key, s0);
   await updateStore((s) => {
     const own = (s.cycles[key] ??= {});
-    // erster datierter Zyklus: Werte aus „start“ mitnehmen (wie in der Anzeige)
-    const c = (own[cycleId] ??= cycleId !== "start" && own.start ? { ...own.start } : { updatedAt: 0 });
+    // erster Zahlungsmonat: Werte aus „start“ hinüberschieben (nicht kopieren – sonst doppelt im Verlauf)
+    if (carriesStart(own, cycleId)) {
+      own[cycleId] = own.start;
+      delete own.start;
+    }
+    const c = (own[cycleId] ??= { updatedAt: 0 });
     if (clean === undefined) delete c[field];
     else (c as unknown as Record<string, unknown>)[field] = clean;
     if (field === "answer") {
@@ -145,9 +158,12 @@ export async function setCycleField(key: string, cycleId: string, field: "contac
   });
 }
 
+const PERSON_MAX: Record<string, number> = { discord: 100, bot: 100, note: 2000 };
+
 export async function setPersonField(key: string, field: "discord" | "bot" | "note", value: string): Promise<void> {
-  const max = { discord: 100, bot: 100, note: 2000 }[field];
-  if (!max) throw new CircleError("Unbekanntes Feld");
+  // nur eigene Schlüssel – „constructor“ usw. aus dem Prototyp zählen nicht
+  if (!Object.hasOwn(PERSON_MAX, field)) throw new CircleError("Unbekanntes Feld");
+  const max = PERSON_MAX[field];
   const clean = text(value, max, field === "note" ? "Notiz" : field === "bot" ? "Bot" : "Discord");
   await assertKnown(key, await getStore());
   await updateStore((s) => {

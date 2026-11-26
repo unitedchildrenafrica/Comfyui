@@ -8,7 +8,7 @@ import { ChecklistTab } from "./Checklist";
 import { IdeasTab } from "./Ideas";
 import { OrdersTab, SendTab } from "./Orders";
 import { PadTab } from "./Pad";
-import { usePatreon } from "./Patreon";
+import { useCircle } from "./useCircle";
 import Link from "next/link";
 import { PostsTab } from "./Posts";
 import { SnippetsTab } from "./Snippets";
@@ -33,8 +33,8 @@ const TAB_KEY = "pf.notes.tab";
 /** Komplette Notizen-Ansicht – in der Seitenleiste am Mac und als eigene Seite am Handy. */
 export function NotesPanel({ compact = false }: { compact?: boolean }) {
   const notes = useNotes();
-  const patreon = usePatreon();
-  const toContact = patreon.data?.members.filter((m) => m.state === "contact").length ?? 0;
+  const circle = useCircle();
+  const toContact = circle.toContact;
   const [tab, setTab] = useState<Tab>("orders");
   const [query, setQuery] = useState("");
   const [postFilter, setPostFilter] = useState<PostStatus>("planned");
@@ -58,7 +58,7 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
   const hits = (t: (typeof TABS)[number]) => {
     if (!t.col) {
       const ql = query.toLowerCase();
-      return (patreon.data?.members ?? []).filter((m) => `${m.name} ${m.email}`.toLowerCase().includes(ql)).length;
+      return circle.rows.filter((m) => `${m.name} ${m.email} ${m.discord}`.toLowerCase().includes(ql)).length;
     }
     const col = t.col;
     const list = notes.data[col] as { id: string }[];
@@ -83,12 +83,12 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="space-y-3">
-      <div className={`grid gap-1.5 ${patreon.data?.configured ? "grid-cols-5" : "grid-cols-4"}`}>
+      <div className={`grid gap-1.5 ${circle.show ? "grid-cols-5" : "grid-cols-4"}`}>
         <Stat n={counts.open} label="offen" to="orders" />
         <Stat n={counts.tosend} label="zu schicken" to="send" warn />
         <Stat n={counts.unreleased} label="unreleased" to="posts" post="unreleased" />
         <Stat n={counts.planned} label="zu posten" to="posts" post="planned" />
-        {patreon.data?.configured && <Stat n={toContact} label={"an\u00ADschrei\u00ADben"} to="patreon" warn />}
+        {circle.show && <Stat n={toContact} label={"an\u00ADschrei\u00ADben"} to="patreon" warn />}
       </div>
 
       <div className="relative">

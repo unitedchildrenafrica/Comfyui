@@ -202,3 +202,24 @@ describe("migrateAcks", () => {
     expect(twice.cycles.m1["2026-11-12"].contacted).toBe("no");
   });
 });
+
+describe("Schlussprüfung: start nur in den ersten Zahlungsmonat", () => {
+  it("zweite Zahlung beginnt offen, auch wenn es einen start-Eintrag gibt", () => {
+    const s = empty();
+    s.cycles.m1 = { start: { contacted: "yes", set: "Bombchu", updatedAt: 1 }, "2026-11-12": { hasIt: "yes", updatedAt: 2 } };
+    const [row] = buildRows(snap([member({ lastCharge: "2026-12-12T08:00:00.000+00:00" })]), ["ic"], s);
+    expect(row.cycleId).toBe("2026-12-12");
+    expect(row.cycle.contacted).toBeUndefined();
+    expect(row.cycle.set).toBeUndefined();
+    expect(row.state).toBe("contact");
+  });
+});
+
+describe("Schlussprüfung: stabile Reihenfolge beim Tippen", () => {
+  it("behält bekannte Zeilen an ihrem Platz, neue kommen ans Ende, weggefallene raus", async () => {
+    const { stableOrder } = await import("@/lib/circle");
+    expect(stableOrder(["a", "b", "c"], ["b", "c", "a", "d"])).toEqual(["a", "b", "c", "d"]);
+    expect(stableOrder(["a", "b", "c"], ["c", "a"])).toEqual(["a", "c"]);
+    expect(stableOrder([], ["x", "y"])).toEqual(["x", "y"]);
+  });
+});

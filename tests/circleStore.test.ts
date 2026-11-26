@@ -117,3 +117,40 @@ describe("Inner-Circle-Speicher", () => {
     expect(v.syncedAt).toBeNull();
   });
 });
+
+describe("Schlussprüfung: Speicher", () => {
+  it("erster Tipp im ersten Zahlungsmonat verschiebt start, statt ihn zu kopieren", async () => {
+    const c = await import("@/lib/server/circle");
+    writeFileSync(
+      path.join(root, "patreon-members.json"),
+      JSON.stringify({ syncedAt: Date.now(), campaignId: "c1", tiers: [{ id: "ic", title: "Inner Circle", amountCents: 4400 }], members: [member("p9", "Neu", "2026-11-20T08:00:00.000+00:00")] }),
+    );
+    await c.updateStore((s) => {
+      s.cycles.p9 = { start: { set: "Bombchu", updatedAt: 1 } };
+    });
+    await c.setCycleField("p9", "2026-11-20", "contacted", "yes");
+    const s = store();
+    expect(s.cycles.p9.start).toBeUndefined();
+    expect(s.cycles.p9["2026-11-20"]).toMatchObject({ set: "Bombchu", contacted: "yes" });
+    // spätere Zahlung: kein Übertrag mehr
+    await c.setCycleField("p9", "2026-12-20", "answer", "no");
+    expect(store().cycles.p9["2026-12-20"].set).toBeUndefined();
+  });
+
+  it("unbekannte Personen-Felder (auch aus dem Prototyp) werden abgelehnt", async () => {
+    const c = await import("@/lib/server/circle");
+    const before = JSON.stringify(store());
+    for (const f of ["constructor", "toString", "valueOf", "__proto__"]) {
+      await expect(c.setPersonField("p9", f as "note", "x".repeat(5000))).rejects.toBeInstanceOf(c.CircleError);
+    }
+    expect(JSON.stringify(store())).toBe(before);
+  });
+
+  it("kaputte Speicherdatei wird nie mit einem leeren Stand überschrieben", async () => {
+    const c = await import("@/lib/server/circle");
+    const file = path.join(root, "inner-circle.json");
+    writeFileSync(file, "{ kaputt");
+    await expect(c.setPersonField("p9", "discord", "x")).rejects.toThrow();
+    expect(readFileSync(file, "utf8")).toBe("{ kaputt");
+  });
+});

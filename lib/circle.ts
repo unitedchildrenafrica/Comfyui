@@ -95,17 +95,27 @@ export function cycleIdFor(lastCharge: string | null, lastChargeStatus: string |
   return dated.at(-1) ?? "start";
 }
 
-/** Werte des Zyklus; fehlt ein datierter Zyklus noch, gelten die Werte aus „start“ (vor der ersten Zahlung getippt). */
+/** Gibt es schon einen datierten Zyklus (also eine erste Zahlung mit Einträgen)? */
+export const hasDatedCycle = (own: Record<string, CycleData>) => Object.keys(own).some((id) => DATED.test(id));
+
+/**
+ * Die Werte aus „start“ (vor der ersten Zahlung getippt) gelten nur für den ERSTEN Zahlungsmonat –
+ * solange es noch keinen datierten Zyklus gibt. Spätere Zahlungen beginnen immer offen.
+ */
+export function carriesStart(own: Record<string, CycleData>, cycleId: string): boolean {
+  return cycleId !== "start" && !own[cycleId] && !!own.start && !hasDatedCycle(own);
+}
+
 export function currentCycle(store: CircleStore, key: string, cycleId: string): CycleData {
   const own = store.cycles[key] ?? {};
-  return own[cycleId] ?? (cycleId !== "start" ? own.start : undefined) ?? { updatedAt: 0 };
+  return own[cycleId] ?? (carriesStart(own, cycleId) ? own.start : undefined) ?? { updatedAt: 0 };
 }
 
 const hasValues = (c: CycleData) => !!(c.contacted || c.answer || c.hasIt || c.set?.trim());
 
 function history(store: CircleStore, key: string, cycleId: string): CircleRow["history"] {
   const own = store.cycles[key] ?? {};
-  const fromStart = cycleId !== "start" && !own[cycleId] && !!own.start;
+  const fromStart = carriesStart(own, cycleId);
   return Object.entries(own)
     .filter(([id, data]) => id !== cycleId && !(fromStart && id === "start") && hasValues(data))
     .sort(([a], [b]) => (a === "start" ? 1 : b === "start" ? -1 : b.localeCompare(a)))
@@ -257,4 +267,16 @@ export function migrateAcks(store: CircleStore, acks: Record<string, string>): C
   }
   out.acksMigrated = true;
   return out;
+}
+
+/**
+ * Reihenfolge beim Tippen stabil halten: bekannte Zeilen bleiben an ihrem Platz (sonst springt eine
+ * Zeile nach „Angeschrieben ✓“ weg und der nächste Tipp trifft das falsche Mitglied), neue kommen ans
+ * Ende, weggefallene raus. Neu sortiert wird erst beim Neuladen oder Filterwechsel.
+ */
+export function stableOrder(prev: string[], keys: string[]): string[] {
+  const now = new Set(keys);
+  const kept = prev.filter((k) => now.has(k));
+  const known = new Set(kept);
+  return [...kept, ...keys.filter((k) => !known.has(k))];
 }

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBox } from "@/components/ui";
-import { type CircleFilter, type CircleRow, type ManualMember, type Tri, circleStats, matchesFilter } from "@/lib/circle";
+import { type CircleFilter, type CircleRow, type ManualMember, type Tri, circleStats, matchesFilter, stableOrder } from "@/lib/circle";
 import { api, ApiError } from "@/lib/client";
 import type { PatreonTier } from "@/lib/patreon";
 import { CircleTable, type CycleField } from "./CircleTable";
 import { dollars, todayIso } from "./format";
 import { MemberSheet } from "./MemberSheet";
+import { CIRCLE_CHANGED } from "@/components/notes/useCircle";
 
 interface CircleView {
   configured: boolean;
@@ -56,13 +57,17 @@ export default function CirclePage() {
   const [sheet, setSheet] = useState<{ key: string | null } | null>(null);
   const [showTiers, setShowTiers] = useState(false);
   const [folders, setFolders] = useState<string[]>([]);
+  /** Zeilen-Reihenfolge; bleibt beim Tippen stehen, neu sortiert wird beim Laden und Filterwechsel */
+  const [order, setOrder] = useState<string[]>([]);
   const mainRef = useRef<HTMLElement>(null);
   const narrow = useNarrow(mainRef);
   const now = useMemo(() => new Date(), [view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     try {
-      setView(await api<CircleView>("/api/circle"));
+      const v = await api<CircleView>("/api/circle");
+      setOrder([]);
+      setView(v);
       setError(null);
     } catch (err) {
       setError((err as ApiError).message);
@@ -83,6 +88,8 @@ export default function CirclePage() {
       try {
         setView(await api<CircleView>("/api/circle", { method: "POST", json }));
         setError(null);
+        // Zähler „anschreiben“ in der Notizen-Leiste nachziehen
+        window.dispatchEvent(new Event(CIRCLE_CHANGED));
         return true;
       } catch (err) {
         setError((err as ApiError).message);
@@ -111,7 +118,15 @@ export default function CirclePage() {
     }
   };
 
-  const rows = view?.rows ?? [];
+  useEffect(() => {
+    if (view) setOrder((prev) => stableOrder(prev, view.rows.map((r) => r.key)));
+  }, [view]);
+  const chooseFilter = (f: CircleFilter) => {
+    setFilter(f);
+    if (view) setOrder(view.rows.map((r) => r.key));
+  };
+  const byKey = new Map((view?.rows ?? []).map((r) => [r.key, r]));
+  const rows = order.length ? order.map((k) => byKey.get(k)).filter((r): r is CircleRow => !!r) : (view?.rows ?? []);
   const stats = circleStats(rows);
   const q = query.trim().toLowerCase();
   const searched = rows.filter((r) => !q || `${r.name} ${r.email} ${r.discord} ${r.bot} ${r.cycle.set ?? ""}`.toLowerCase().includes(q));
@@ -165,7 +180,7 @@ export default function CirclePage() {
           { label: "Warten auf Antwort", value: String(stats.waitingAnswer), cls: "", f: "answer" as CircleFilter },
           { label: "Set noch liefern", value: String(stats.toDeliver), cls: stats.toDeliver ? "text-emerald-300" : "", f: "deliver" as CircleFilter },
         ].map((s, i) => (
-          <button key={s.label} type="button" className={`card p-3 text-left ${i === 4 ? "col-span-2 sm:col-span-1" : ""}`} onClick={() => setFilter(s.f)}>
+          <button key={s.label} type="button" className={`card p-3 text-left ${i === 4 ? "col-span-2 sm:col-span-1" : ""}`} onClick={() => chooseFilter(s.f)}>
             <span className="block text-xs text-muted">{s.label}</span>
             <span className={`block text-xl font-bold ${s.cls}`}>{view ? s.value : "…"}</span>
           </button>
@@ -177,7 +192,7 @@ export default function CirclePage() {
           <button
             key={f.id}
             type="button"
-            onClick={() => setFilter(f.id)}
+            onClick={() => chooseFilter(f.id)}
             className={`min-h-9 shrink-0 rounded-full border px-3 text-sm ${filter === f.id ? "border-accent bg-accent text-white" : "border-line text-soft"}`}
           >
             {f.label} {count(f.id)}
