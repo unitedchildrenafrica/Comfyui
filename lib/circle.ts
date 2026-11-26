@@ -79,6 +79,8 @@ export interface CircleRow {
   discord: string;
   /** Discord-Name kam automatisch (Patreon-Verbindung + Discord-Bot), nicht selbst eingetragen */
   discordAuto: boolean;
+  /** Mitglied hat Discord bei Patreon verbunden (Patreon liefert die ID) */
+  discordLinked: boolean;
   bot: string;
   note: string;
   manual: ManualMember | null;
@@ -169,6 +171,7 @@ export function buildRows(
       history: history(store, m.id, cycleId),
       discord: extra.discord || (m.discordId ? (discordNames[m.discordId] ?? "") : ""),
       discordAuto: !extra.discord && !!m.discordId && !!discordNames[m.discordId],
+      discordLinked: !!m.discordId,
       bot: extra.bot ?? "",
       note: extra.note ?? "",
       manual: null,
@@ -201,6 +204,7 @@ export function buildRows(
       history: history(store, key, cycleId),
       discord: extra.discord ?? "",
       discordAuto: false,
+      discordLinked: false,
       bot: extra.bot ?? "",
       note: extra.note ?? "",
       manual: man,

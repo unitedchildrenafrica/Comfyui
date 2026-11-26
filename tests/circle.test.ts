@@ -238,3 +238,21 @@ describe("Discord-Namen automatisch", () => {
     expect(by).toEqual({ a: ["selbst_getippt", false], b: ["vibes", true], c: ["", false] });
   });
 });
+
+describe("Patreon-Stand neu abfragen", () => {
+  it("fehlt, ist älter als 1 h oder stammt von vor dem Discord-Update", async () => {
+    const { needsPatreonSync } = await import("@/lib/patreon");
+    const now = Date.UTC(2026, 10, 26, 12);
+    expect(needsPatreonSync(null, now)).toBe(true);
+    expect(needsPatreonSync({ syncedAt: now - 2 * 3600_000, members: [{ discordId: null }] }, now)).toBe(true);
+    expect(needsPatreonSync({ syncedAt: now - 60_000, members: [{ discordId: null }, { discordId: "1" }] }, now)).toBe(false);
+    // alter Stand: Feld discordId gibt es noch gar nicht → sofort neu holen
+    expect(needsPatreonSync({ syncedAt: now - 60_000, members: [{}, {}] }, now)).toBe(true);
+    expect(needsPatreonSync({ syncedAt: now - 60_000, members: [] }, now)).toBe(false);
+  });
+
+  it("jede Zeile weiß, ob Discord bei Patreon verbunden ist", () => {
+    const rows = buildRows(snap([member({ id: "a", discordId: "111111111111111111" }), member({ id: "b", discordId: null })]), ["ic"], empty());
+    expect(Object.fromEntries(rows.map((r) => [r.key, r.discordLinked]))).toEqual({ a: true, b: false });
+  });
+});

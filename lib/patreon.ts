@@ -73,3 +73,12 @@ export function deDate(iso: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
+
+/**
+ * Patreon neu abfragen? Kein Stand, älter als eine Stunde, oder ein Stand von vor dem Discord-Update
+ * (Feld discordId fehlt überall) – sonst gäbe es bis zu einer Stunde lang keine Discord-Namen.
+ */
+export function needsPatreonSync(snap: { syncedAt: number; members: { discordId?: unknown }[] } | null, now: number): boolean {
+  if (!snap || now - snap.syncedAt > 60 * 60_000) return true;
+  return snap.members.length > 0 && snap.members.every((m) => !("discordId" in m));
+}

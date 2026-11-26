@@ -138,6 +138,15 @@ export default function CirclePage() {
     () => [...new Set([...folders, ...rows.flatMap((r) => [r.cycle.set, ...r.history.map((h) => h.data.set)]).filter((s): s is string => !!s)])].sort((a, b) => a.localeCompare(b, "de")),
     [folders, rows],
   );
+  // Wie viele aktive Patreon-Mitglieder haben Discord bei Patreon verbunden – und bei wie vielen kam ein Name?
+  const patreonRows = rows.filter((r) => r.source === "patreon" && r.state !== "former");
+  const linked = patreonRows.filter((r) => r.discordLinked).length;
+  const named = patreonRows.filter((r) => r.discordLinked && (r.discordAuto || r.discord)).length;
+  const discordInfo = !patreonRows.length
+    ? ""
+    : linked
+      ? `${linked} von ${patreonRows.length} Mitgliedern haben Discord bei Patreon verbunden, bei ${named} ist der Name da.`
+      : `Bei keinem der ${patreonRows.length} Mitglieder liefert Patreon eine Discord-Verbindung – „↻ Patreon“ antippen; bleibt es bei 0, haben sie Discord nicht mit Patreon verbunden.`;
   const sheetRow = sheet?.key ? (rows.find((r) => r.key === sheet.key) ?? null) : null;
   const tracked = view?.trackedTiers ? new Set(view.trackedTiers) : null;
 
@@ -220,7 +229,7 @@ export default function CirclePage() {
       </datalist>
 
       <p className="px-1 text-xs text-muted">
-        {view?.discordConfigured ? "🔗 = Discord-Name automatisch (bei Patreon verbunden). Selbst eingetragene Namen gehen vor; leeren holt den automatischen zurück. " : view?.configured ? "Discord-Namen automatisch holen: einmal „bash /root/setup-server.sh discord“ auf dem Server. " : ""}
+        {view?.discordConfigured ? `🔗 = Discord-Name automatisch. ${discordInfo} Selbst eingetragene Namen gehen vor; leeren holt den automatischen zurück. ` : view?.configured ? "Discord-Namen automatisch holen: einmal „bash /root/setup-server.sh discord“ auf dem Server. " : ""}
         Angeschrieben · Antwort · Set · Hat es gelten pro Zahlung – bei der nächsten Abbuchung stehen sie wieder auf „offen“. Den Verlauf siehst du, wenn du einen Namen antippst.
       </p>
 

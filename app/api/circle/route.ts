@@ -4,6 +4,13 @@ import { badRequest, errorResponse } from "@/lib/server/http";
 import { CircleError, addManual, circleView, editManual, paidManual, removeManual, setCycleField, setPersonField } from "@/lib/server/circle";
 import { refreshDiscordNames } from "@/lib/server/discord";
 import { getSnapshot, patreonConfigured, setTrackedTiers, startPatreonLoop, syncPatreon } from "@/lib/server/patreon";
+import { needsPatreonSync } from "@/lib/patreon";
+
+/** Discord-Namen zu den bei Patreon verbundenen Konten nachholen – höchstens ~8 s warten, der Rest läuft im Hintergrund weiter */
+async function refreshNames() {
+  const ids = ((await getSnapshot())?.members ?? []).map((m) => m.discordId).filter((id): id is string => !!id);
+  if (ids.length) await Promise.race([refreshDiscordNames(ids).catch(() => {}), new Promise((r) => setTimeout(r, 8_000))]);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +19,8 @@ export async function GET() {
   try {
     if (patreonConfigured()) {
       startPatreonLoop();
-      const snap = await getSnapshot();
-      if (!snap || Date.now() - snap.syncedAt > 60 * 60_000) await syncPatreon().catch(() => {});
-      // Discord-Namen zu den bei Patreon verbundenen Konten nachholen – höchstens ~8 s warten,
-      // der Rest kommt beim nächsten Laden (läuft im Hintergrund weiter)
-      const ids = ((await getSnapshot())?.members ?? []).map((m) => m.discordId).filter((id): id is string => !!id);
-      if (ids.length) await Promise.race([refreshDiscordNames(ids).catch(() => {}), new Promise((r) => setTimeout(r, 8_000))]);
+      if (needsPatreonSync(await getSnapshot(), Date.now())) await syncPatreon().catch(() => {});
+      await refreshNames();
     }
     return Response.json(await circleView());
   } catch (err) {
@@ -43,6 +46,7 @@ export async function POST(req: NextRequest) {
       case "sync":
         if (!patreonConfigured()) return badRequest("Patreon ist noch nicht eingerichtet");
         await syncPatreon();
+        await refreshNames();
         break;
       case "cycle":
         await setCycleField(key, String(b.cycleId ?? ""), b.field as "contacted", (b.value ?? null) as string | null);
