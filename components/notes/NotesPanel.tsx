@@ -8,7 +8,8 @@ import { ChecklistTab } from "./Checklist";
 import { IdeasTab } from "./Ideas";
 import { OrdersTab, SendTab } from "./Orders";
 import { PadTab } from "./Pad";
-import { PatreonTab, usePatreon } from "./Patreon";
+import { usePatreon } from "./Patreon";
+import Link from "next/link";
 import { PostsTab } from "./Posts";
 import { SnippetsTab } from "./Snippets";
 import { useNotes } from "./useNotes";
@@ -132,7 +133,22 @@ export function NotesPanel({ compact = false }: { compact?: boolean }) {
         <>
           {tab === "orders" && <OrdersTab notes={notes} query={q} />}
           {tab === "send" && <SendTab notes={notes} query={q} />}
-          {tab === "patreon" && <PatreonTab p={patreon} query={q} />}
+          {tab === "patreon" && (
+            <div className="space-y-2 rounded-xl border border-line bg-bg p-3 text-sm">
+              <p>
+                {toContact ? (
+                  <>
+                    <span className="font-semibold text-amber-200">{toContact}</span> {toContact === 1 ? "Mitglied hat" : "Mitglieder haben"} gezahlt und {toContact === 1 ? "wartet" : "warten"} aufs Anschreiben.
+                  </>
+                ) : (
+                  "Gerade muss niemand angeschrieben werden."
+                )}
+              </p>
+              <Link href="/circle" className="btn btn-primary w-full">
+                👑 Zum Tab Inner Circle →
+              </Link>
+            </div>
+          )}
           {tab === "posts" && <PostsTab notes={notes} query={q} filter={postFilter} setFilter={setPostFilter} />}
           {tab === "ideas" && <IdeasTab notes={notes} query={q} />}
           {tab === "characters" && <CharactersTab notes={notes} query={q} />}

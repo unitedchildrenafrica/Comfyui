@@ -137,6 +137,10 @@ bash /root/setup-server.sh patreon
 
 und Client ID, Client Secret, Creator's Access Token und Creator's Refresh Token eingeben (werden nicht angezeigt, landen in `/etc/pod-frontend.env`). Abgelaufene Tokens erneuert die App selbst (`DATA_DIR/patreon-tokens.json`). Zum lokalen Testen gibt es `dev/mock-patreon.mjs`.
 
+### Inner Circle: Mitglieder-Tabelle
+
+Tab **👑 Circle** (ganz links): eine Zeile pro Inner-Circle-Mitglied wie in der früheren Google-Tabelle. Name, Stufe, Betrag, Beitritt, letzte und nächste Zahlung kommen automatisch aus Patreon (stündlich, „↻ Patreon“ fragt sofort ab); **Tage bis Zahlung** in Ampelfarben (rot ≤ 7, orange 8–14, grün ab 15). Per Antippen: **Discord**, **Bot** (Name seines Discord-Bots), **Angeschrieben**, **Antwort**, **Set gewünscht** (Vorschläge aus den Galerie-Ordnern) und **Hat es**. Angeschrieben/Antwort/Set/Hat es gelten pro Zahlung – bei der nächsten Abbuchung stehen sie wieder auf „offen“, der alte Monat steht im Verlauf (Namen antippen). Kennzahlen und Filter oben (Anschreiben, Wartet auf Antwort, Set liefern, Zahlt bald, Abgelehnt, Ehemalige). **＋ Mitglied** für Leute ohne Patreon, mit „💰 Zahlung erhalten“. Gespeichert in `DATA_DIR/inner-circle.json`; frühere Häkchen „angeschrieben“ werden einmal übernommen. Ist zu wenig Platz für alle Spalten (Handy, Rechner mit offener Notizen-Leiste), kommen die Spalten zum Antippen direkt nach dem Namen.
+
 ### Fotos: eigene Bilder und Videos
 
 Tab **📷 Fotos** (ganz rechts): eigene Ordner anlegen, umbenennen, löschen; Bilder und Videos vom Handy hochladen (mehrere auf einmal), ansehen (Vollbild, wischen), herunterladen, einzeln oder per Auswahl löschen, ganzen Ordner als ZIP. Dateien liegen in `DATA_DIR/fotos/<Ordner>/` – im Server-Modus also auf dem Server und unabhängig von Pods. Hochgeladen wird in Stücken zu 32 MB (Cloudflare lässt pro Anfrage nur ~100 MB durch), bricht das Netz ab, wird das Stück wiederholt. Halbe Uploads räumt die App nach einem Tag weg.
