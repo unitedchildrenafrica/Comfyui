@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import type { ManualMember } from "@/lib/circle";
 import { badRequest, errorResponse } from "@/lib/server/http";
 import { CircleError, addManual, circleView, editManual, paidManual, removeManual, setCycleField, setPersonField } from "@/lib/server/circle";
+import { refreshDiscordNames } from "@/lib/server/discord";
 import { getSnapshot, patreonConfigured, setTrackedTiers, startPatreonLoop, syncPatreon } from "@/lib/server/patreon";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,10 @@ export async function GET() {
       startPatreonLoop();
       const snap = await getSnapshot();
       if (!snap || Date.now() - snap.syncedAt > 60 * 60_000) await syncPatreon().catch(() => {});
+      // Discord-Namen zu den bei Patreon verbundenen Konten nachholen – höchstens ~8 s warten,
+      // der Rest kommt beim nächsten Laden (läuft im Hintergrund weiter)
+      const ids = ((await getSnapshot())?.members ?? []).map((m) => m.discordId).filter((id): id is string => !!id);
+      if (ids.length) await Promise.race([refreshDiscordNames(ids).catch(() => {}), new Promise((r) => setTimeout(r, 8_000))]);
     }
     return Response.json(await circleView());
   } catch (err) {

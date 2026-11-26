@@ -51,7 +51,22 @@ function TriCell({ value, onChange }: { value: Tri | undefined; onChange: (v: Tr
 }
 
 /** Text zum Antippen: zeigt den Wert, beim Antippen ein Eingabefeld (Enter/Verlassen speichert, Esc bricht ab) */
-export function EditCell({ value, placeholder, onSave, list, maxLength }: { value: string; placeholder: string; onSave: (v: string) => void; list?: string; maxLength: number }) {
+export function EditCell({
+  value,
+  placeholder,
+  onSave,
+  list,
+  maxLength,
+  auto,
+}: {
+  value: string;
+  placeholder: string;
+  onSave: (v: string) => void;
+  list?: string;
+  maxLength: number;
+  /** Wert kam automatisch (z. B. Discord) – mit 🔗 markieren */
+  auto?: boolean;
+}) {
   const [edit, setEdit] = useState(false);
   const [draft, setDraft] = useState(value);
   const input = useRef<HTMLInputElement>(null);
@@ -89,11 +104,13 @@ export function EditCell({ value, placeholder, onSave, list, maxLength }: { valu
     <button
       type="button"
       className={`min-h-9 max-w-[14rem] truncate rounded-lg px-2 text-left text-sm ${value ? "border border-line bg-bg" : "border border-dashed border-line text-muted"}`}
+      title={auto ? "Automatisch über Patreon/Discord – antippen, um selbst einen Namen einzutragen" : undefined}
       onClick={() => {
         setDraft(value);
         setEdit(true);
       }}
     >
+      {auto && <span aria-label="automatisch">🔗 </span>}
       {value || placeholder}
     </button>
   );
@@ -124,7 +141,7 @@ export function CircleTable({ rows, now, narrow, actions }: { rows: CircleRow[];
           </button>
         );
       case "discord":
-        return <EditCell value={r.discord} placeholder="＋ eintragen" maxLength={100} onSave={(v) => actions.onText(r, "discord", v)} />;
+        return <EditCell value={r.discord} auto={r.discordAuto} placeholder="＋ eintragen" maxLength={100} onSave={(v) => actions.onText(r, "discord", v)} />;
       case "bot":
         return <EditCell value={r.bot} placeholder="–" maxLength={100} onSave={(v) => actions.onText(r, "bot", v)} />;
       case "tier":

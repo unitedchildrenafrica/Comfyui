@@ -223,3 +223,18 @@ describe("Schlussprüfung: stabile Reihenfolge beim Tippen", () => {
     expect(stableOrder([], ["x", "y"])).toEqual(["x", "y"]);
   });
 });
+
+describe("Discord-Namen automatisch", () => {
+  it("eigener Name gewinnt, sonst der von Discord (markiert)", () => {
+    const s = empty();
+    s.people.a = { discord: "selbst_getippt" };
+    const rows = buildRows(
+      snap([member({ id: "a", discordId: "111111111111111111" }), member({ id: "b", discordId: "222222222222222222" }), member({ id: "c", discordId: null })]),
+      ["ic"],
+      s,
+      { "111111111111111111": "agnikai", "222222222222222222": "vibes" },
+    );
+    const by = Object.fromEntries(rows.map((r) => [r.key, [r.discord, r.discordAuto]]));
+    expect(by).toEqual({ a: ["selbst_getippt", false], b: ["vibes", true], c: ["", false] });
+  });
+});

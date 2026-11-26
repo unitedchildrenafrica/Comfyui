@@ -77,6 +77,8 @@ export interface CircleRow {
   cycle: CycleData;
   history: { cycleId: string; data: CycleData }[];
   discord: string;
+  /** Discord-Name kam automatisch (Patreon-Verbindung + Discord-Bot), nicht selbst eingetragen */
+  discordAuto: boolean;
   bot: string;
   note: string;
   manual: ManualMember | null;
@@ -127,7 +129,13 @@ function paidState(cycle: CycleData, paid: boolean): RowState {
   return cycle.contacted === "yes" ? "active" : "contact";
 }
 
-export function buildRows(snap: { tiers: PatreonTier[]; members: PatreonMember[] } | null, tracked: string[] | null, store: CircleStore): CircleRow[] {
+export function buildRows(
+  snap: { tiers: PatreonTier[]; members: PatreonMember[] } | null,
+  tracked: string[] | null,
+  store: CircleStore,
+  /** Discord-ID → Benutzername (automatisch geholt) */
+  discordNames: Record<string, string> = {},
+): CircleRow[] {
   const rows: CircleRow[] = [];
   const trackedSet = tracked ? new Set(tracked) : null;
   const tierName = new Map((snap?.tiers ?? []).map((t) => [t.id, t.title]));
@@ -159,7 +167,8 @@ export function buildRows(snap: { tiers: PatreonTier[]; members: PatreonMember[]
       cycleId,
       cycle,
       history: history(store, m.id, cycleId),
-      discord: extra.discord ?? "",
+      discord: extra.discord || (m.discordId ? (discordNames[m.discordId] ?? "") : ""),
+      discordAuto: !extra.discord && !!m.discordId && !!discordNames[m.discordId],
       bot: extra.bot ?? "",
       note: extra.note ?? "",
       manual: null,
@@ -191,6 +200,7 @@ export function buildRows(snap: { tiers: PatreonTier[]; members: PatreonMember[]
       cycle,
       history: history(store, key, cycleId),
       discord: extra.discord ?? "",
+      discordAuto: false,
       bot: extra.bot ?? "",
       note: extra.note ?? "",
       manual: man,

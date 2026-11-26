@@ -154,3 +154,24 @@ describe("Schlussprüfung: Speicher", () => {
     expect(readFileSync(file, "utf8")).toBe("{ kaputt");
   });
 });
+
+describe("Discord-Namen in der Ansicht", () => {
+  it("zeigt gemerkte Discord-Namen und meldet, ob der Bot eingerichtet ist", async () => {
+    const c = await import("@/lib/server/circle");
+    writeFileSync(
+      path.join(root, "patreon-members.json"),
+      JSON.stringify({
+        syncedAt: Date.now(),
+        campaignId: "c1",
+        tiers: [{ id: "ic", title: "Inner Circle", amountCents: 4400 }],
+        members: [{ ...member("d1", "Mit Discord", "2026-11-20T08:00:00.000+00:00"), discordId: "111111111111111111" }],
+      }),
+    );
+    writeFileSync(path.join(root, "inner-circle.json"), JSON.stringify({ people: {}, cycles: {}, acksMigrated: true }));
+    writeFileSync(path.join(root, "discord-names.json"), JSON.stringify({ "111111111111111111": { username: "agnikai", fetchedAt: Date.now() } }));
+    delete process.env.DISCORD_BOT_TOKEN;
+    const v = await c.circleView();
+    expect(v.rows.find((r) => r.key === "d1")).toMatchObject({ discord: "agnikai", discordAuto: true });
+    expect(v.discordConfigured).toBe(false);
+  });
+});

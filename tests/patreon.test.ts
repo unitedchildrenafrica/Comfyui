@@ -94,7 +94,7 @@ beforeAll(async () => {
       if (!cursor)
         return json(200, {
           data: [mk("1", "Anna", "fan"), mk("2", "Ben", "ic")],
-          included: [{ id: "u2", type: "user", attributes: { url: "https://www.patreon.com/ben" } }],
+          included: [{ id: "u2", type: "user", attributes: { url: "https://www.patreon.com/ben", social_connections: { discord: { user_id: "123456789012345678", scopes: ["identify"] }, twitter: null } } }],
           meta: { pagination: { cursors: { next: "seite2" } } },
         });
       return json(200, { data: [mk("3", "Cleo", "ic")], meta: { pagination: { cursors: { next: null } } } });
@@ -123,6 +123,9 @@ describe("Patreon-Abfrage", () => {
     const snap = await syncPatreon();
     expect(snap.members.map((m) => m.name)).toEqual(["Anna", "Ben", "Cleo"]);
     expect(snap.members[1].url).toBe("https://www.patreon.com/ben");
+    // Discord-ID aus den verbundenen Konten (nur wer Discord bei Patreon verbunden hat)
+    expect(snap.members.map((m) => m.discordId)).toEqual([null, "123456789012345678", null]);
+    expect(seen.some((s) => decodeURIComponent(s.url).includes("fields[user]=url,social_connections"))).toBe(true);
     expect(snap.tiers.map((t) => t.title)).toEqual(["Fan", "Inner Circle"]);
     expect(seen[0].auth).toBe("Bearer alt-abgelaufen");
     expect(seen.some((s) => s.url.includes("page%5Bcursor%5D=seite2") || s.url.includes("page[cursor]=seite2"))).toBe(true);

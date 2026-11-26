@@ -17,6 +17,8 @@ interface CircleView {
   tiers: PatreonTier[];
   trackedTiers: string[] | null;
   rows: CircleRow[];
+  discordConfigured: boolean;
+  discordError: string | null;
 }
 
 const FILTERS: { id: CircleFilter; label: string }[] = [
@@ -164,6 +166,7 @@ export default function CirclePage() {
 
       {error && <ErrorBox>{error}</ErrorBox>}
       {view?.error && <ErrorBox>Patreon: {view.error} – es gilt der letzte Stand.</ErrorBox>}
+      {view?.discordError && <ErrorBox>Discord: {view.discordError}</ErrorBox>}
       {view && !view.configured && (
         <section className="card space-y-2 p-3 text-sm">
           <p className="font-semibold">Patreon noch nicht verbunden</p>
@@ -217,6 +220,7 @@ export default function CirclePage() {
       </datalist>
 
       <p className="px-1 text-xs text-muted">
+        {view?.discordConfigured ? "🔗 = Discord-Name automatisch (bei Patreon verbunden). Selbst eingetragene Namen gehen vor; leeren holt den automatischen zurück. " : view?.configured ? "Discord-Namen automatisch holen: einmal „bash /root/setup-server.sh discord“ auf dem Server. " : ""}
         Angeschrieben · Antwort · Set · Hat es gelten pro Zahlung – bei der nächsten Abbuchung stehen sie wieder auf „offen“. Den Verlauf siehst du, wenn du einen Namen antippst.
       </p>
 

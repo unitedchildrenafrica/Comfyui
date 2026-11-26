@@ -4,6 +4,7 @@ import path from "node:path";
 import { type CircleRow, type CircleStore, type ManualMember, type Tri, buildRows, carriesStart, migrateAcks } from "../circle";
 import type { PatreonTier } from "../patreon";
 import { config } from "./config";
+import { discordConfigured, discordError, discordNameMap } from "./discord";
 import { getAcks, getSnapshot, getTrackedTiers, patreonConfigured, patreonError } from "./patreon";
 
 // Inner Circle: was der Nutzer zu Mitgliedern festhält (Discord, Bot, Notiz, Hand-Mitglieder und pro
@@ -20,6 +21,9 @@ export interface CircleView {
   tiers: PatreonTier[];
   trackedTiers: string[] | null;
   rows: CircleRow[];
+  /** Discord-Bot-Token eingerichtet (Namen werden automatisch geholt) */
+  discordConfigured: boolean;
+  discordError: string | null;
 }
 
 /** Nur „Datei gibt es noch nicht“ heißt leer. Kaputt oder nicht lesbar → Fehler, damit nie ein leerer Stand die Daten überschreibt. */
@@ -72,7 +76,9 @@ export async function circleView(): Promise<CircleView> {
     error: patreonError(),
     tiers: snap?.tiers ?? [],
     trackedTiers: tracked,
-    rows: buildRows(snap, tracked, store),
+    rows: buildRows(snap, tracked, store, await discordNameMap()),
+    discordConfigured: discordConfigured(),
+    discordError: discordError(),
   };
 }
 

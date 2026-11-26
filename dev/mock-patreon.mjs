@@ -33,7 +33,12 @@ http
           attributes: { full_name: name, email: `${id}@example.com`, patron_status: status, last_charge_date: last, last_charge_status: lastStatus, next_charge_date: d(28), pledge_relationship_start: since },
           relationships: { currently_entitled_tiers: { data: [{ id: tier, type: "tier" }] }, user: { data: { id: `u${id}`, type: "user" } } },
         })),
-        included: people.map(([id]) => ({ id: `u${id}`, type: "user", attributes: { url: `https://www.patreon.com/user?u=${id}` } })),
+        // Mitglieder 1 und 2 haben Discord bei Patreon verbunden (für dev/mock-discord.mjs)
+        included: people.map(([id]) => ({
+          id: `u${id}`,
+          type: "user",
+          attributes: { url: `https://www.patreon.com/user?u=${id}`, social_connections: { discord: id === "1" || id === "2" ? { user_id: `10000000000000000${id}` } : null } },
+        })),
         meta: { pagination: { cursors: { next: null } } },
       });
     json(404, {});

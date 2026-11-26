@@ -24,6 +24,8 @@ export interface PatreonMember {
   tierIds: string[];
   /** Patreon-Profil */
   url: string | null;
+  /** Discord-User-ID, falls bei Patreon verbunden (alter Stand: fehlt) */
+  discordId?: string | null;
 }
 
 export type MemberState = "contact" | "declined" | "done" | "waiting" | "former";

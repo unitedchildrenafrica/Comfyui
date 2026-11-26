@@ -125,6 +125,12 @@ interface JsonApi {
   meta?: { pagination?: { cursors?: { next?: string | null } } };
 }
 
+/** social_connections: { discord: { user_id: "…" } } – nur wer Discord bei Patreon verbunden hat */
+function discordIdOf(conn: unknown): string | null {
+  const id = (conn as { discord?: { user_id?: unknown } } | null | undefined)?.discord?.user_id;
+  return typeof id === "string" && /^\d{5,25}$/.test(id) ? id : null;
+}
+
 const enc = (s: string) => s.replace(/\[/g, "%5B").replace(/\]/g, "%5D");
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 
@@ -146,7 +152,7 @@ export async function syncPatreon(): Promise<Snapshot> {
         const q: string =
           `/api/oauth2/v2/campaigns/${campaign.id}/members?include=currently_entitled_tiers,user` +
           `&fields[member]=full_name,email,patron_status,last_charge_date,last_charge_status,next_charge_date,pledge_relationship_start,currently_entitled_amount_cents,pledge_cadence` +
-          `&fields[user]=url&page[count]=1000` +
+          `&fields[user]=url,social_connections&page[count]=1000` +
           (cursor ? `&page[cursor]=${encodeURIComponent(cursor)}` : "");
         const res: JsonApi = await get<JsonApi>(enc(q));
         const users = new Map((res.included ?? []).filter((x) => x.type === "user").map((u) => [u.id, u]));
@@ -168,6 +174,7 @@ export async function syncPatreon(): Promise<Snapshot> {
             cadence: typeof a.pledge_cadence === "number" ? a.pledge_cadence : null,
             tierIds: Array.isArray(tierRel) ? tierRel.map((t) => t.id) : [],
             url: userId ? str(users.get(userId)?.attributes.url) : null,
+            discordId: userId ? discordIdOf(users.get(userId)?.attributes.social_connections) : null,
           });
         }
         cursor = res.meta?.pagination?.cursors?.next ?? null;

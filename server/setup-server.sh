@@ -82,7 +82,22 @@ if [ "${1:-}" = patreon ]; then
   # Alte, erneuerte Tokens verwerfen – ab jetzt gelten die neuen
   rm -f "$(get DATA_DIR)/patreon-tokens.json"
   systemctl restart pod-frontend
-  log "Patreon eingetragen, App neu gestartet. Liste: Notizen → Inner Circle."
+  log "Patreon eingetragen, App neu gestartet. Liste: Tab Circle (👑)."
+  exit 0
+fi
+
+# bash setup-server.sh discord → Discord-Bot-Token eintragen (Inner Circle: Discord-Namen automatisch)
+if [ "${1:-}" = discord ]; then
+  echo "Token eines Discord-Bots (discord.com/developers → Applications → dein Bot → Bot → Reset Token)."
+  echo "Der Bot braucht keine Rechte und muss auf keinem Server sein. Eingabe wird nicht angezeigt."
+  read -r -s -p "Bot-Token: " v < /dev/tty; echo
+  v="$(printf '%s' "$v" | tr -d '[:space:]')"
+  [ -n "$v" ] || { echo "Token fehlt – abgebrochen"; exit 1; }
+  put DISCORD_BOT_TOKEN "$v"
+  # Namen mit dem alten Token verwerfen, damit sie neu geholt werden
+  rm -f "$(get DATA_DIR)/discord-names.json"
+  systemctl restart pod-frontend
+  log "Discord-Bot eingetragen, App neu gestartet. Namen erscheinen im Tab Circle (🔗)."
   exit 0
 fi
 
