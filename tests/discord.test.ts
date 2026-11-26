@@ -7,7 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const dir = mkdtempSync(path.join(tmpdir(), "discord-"));
 const hits: { url: string; auth: string }[] = [];
 let server: http.Server;
-let mode: "ok" | "401" | "429" = "ok";
+let mode: "ok" | "401" | "429" | "429-kurz" = "ok";
+/** „429-kurz“: nur die nächste Anfrage wird gebremst (retry_after 0,05 s), danach geht es weiter */
+let shortLimitsLeft = 0;
 
 const USERS: Record<string, { username: string; global_name: string | null }> = {
   "111111111111111111": { username: "agnikai", global_name: "Mark" },
@@ -22,7 +24,11 @@ beforeAll(async () => {
       res.end(JSON.stringify(body));
     };
     if (mode === "401") return json(401, { message: "401: Unauthorized" });
-    if (mode === "429") return json(429, { retry_after: 3 });
+    if (mode === "429") return json(429, { retry_after: 60 });
+    if (mode === "429-kurz" && shortLimitsLeft > 0) {
+      shortLimitsLeft--;
+      return json(429, { retry_after: 0.05 });
+    }
     if (req.headers.authorization !== "Bot test-token") return json(401, {});
     const id = req.url!.match(/^\/api\/v10\/users\/(\d+)$/)?.[1];
     const u = id && USERS[id];
@@ -70,14 +76,25 @@ describe("Discord-Namen", () => {
     expect((await d.discordNameMap())["111111111111111111"]).toBe("agnikai");
   });
 
-  it("Discord bremst (429): Abbruch ohne Fehler-Spam, nächster Durchlauf geht weiter", async () => {
+  it("Discord bremst kurz (429 mit kleiner Wartezeit): warten und weitermachen", async () => {
+    const d = await import("@/lib/server/discord");
+    mode = "429-kurz";
+    shortLimitsLeft = 1;
+    await d.refreshDiscordNames(["111111111111111111", "222222222222222222"], Date.now() + 60 * 3600_000);
+    const saved = JSON.parse(readFileSync(path.join(dir, "discord-names.json"), "utf8"));
+    expect(saved["222222222222222222"].fetchedAt).toBeGreaterThan(Date.now() + 59 * 3600_000);
+    expect(saved["111111111111111111"].fetchedAt).toBeGreaterThan(Date.now() + 59 * 3600_000);
+    mode = "ok";
+  });
+
+  it("Discord bremst lange (429): Abbruch ohne Fehler-Spam, nächster Durchlauf geht weiter", async () => {
     const d = await import("@/lib/server/discord");
     mode = "429";
     const before = hits.length;
-    await d.refreshDiscordNames(["111111111111111111", "222222222222222222"], Date.now() + 75 * 3600_000);
+    await d.refreshDiscordNames(["111111111111111111", "222222222222222222"], Date.now() + 90 * 3600_000);
     expect(hits.length).toBe(before + 1);
     mode = "ok";
-    await d.refreshDiscordNames(["111111111111111111"], Date.now() + 75 * 3600_000);
+    await d.refreshDiscordNames(["111111111111111111"], Date.now() + 90 * 3600_000);
     expect(d.discordError()).toBeNull();
   });
 
@@ -87,8 +104,25 @@ describe("Discord-Namen", () => {
     delete process.env.DISCORD_BOT_TOKEN;
     const before = hits.length;
     expect(d.discordConfigured()).toBe(false);
-    await d.refreshDiscordNames(["111111111111111111"], Date.now() + 100 * 3600_000);
+    await d.refreshDiscordNames(["111111111111111111"], Date.now() + 120 * 3600_000);
     expect(hits.length).toBe(before);
     process.env.DISCORD_BOT_TOKEN = token;
+  });
+});
+
+describe("Welche Discord-IDs abfragen", () => {
+  it("nur Mitglieder der gewählten Stufen, die noch dabei sind – ohne Doppelte", async () => {
+    const { discordIdsToFetch } = await import("@/lib/patreon");
+    const m = (id: string, status: string | null, tier: string, discordId: string | null) => ({ status, tierIds: [tier], discordId, id });
+    const members = [
+      m("1", "active_patron", "ic", "111111111111111111"),
+      m("2", "former_patron", "ic", "222222222222222222"),
+      m("3", "active_patron", "fan", "333333333333333333"),
+      m("4", "declined_patron", "ic", "444444444444444444"),
+      m("5", "active_patron", "ic", null),
+      m("6", "active_patron", "ic", "111111111111111111"),
+    ];
+    expect(discordIdsToFetch(members, ["ic"])).toEqual(["111111111111111111", "444444444444444444"]);
+    expect(discordIdsToFetch(members, null)).toEqual(["111111111111111111", "333333333333333333", "444444444444444444"]);
   });
 });

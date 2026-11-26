@@ -82,3 +82,15 @@ export function needsPatreonSync(snap: { syncedAt: number; members: { discordId?
   if (!snap || now - snap.syncedAt > 60 * 60_000) return true;
   return snap.members.length > 0 && snap.members.every((m) => !("discordId" in m));
 }
+
+/**
+ * Discord-IDs, zu denen Namen geholt werden: nur Mitglieder der gewählten Stufen (null = alle), die noch
+ * dabei sind (nicht ehemalig) – nicht alle tausend Patreon-Mitglieder. Reihenfolge bleibt, ohne Doppelte.
+ */
+export function discordIdsToFetch(members: { status: string | null; tierIds: string[]; discordId?: string | null }[], tracked: string[] | null): string[] {
+  const t = tracked ? new Set(tracked) : null;
+  const ids = members
+    .filter((m) => m.discordId && m.status && m.status !== "former_patron" && (!t || m.tierIds.some((x) => t.has(x))))
+    .map((m) => m.discordId as string);
+  return [...new Set(ids)];
+}

@@ -3,12 +3,14 @@ import type { ManualMember } from "@/lib/circle";
 import { badRequest, errorResponse } from "@/lib/server/http";
 import { CircleError, addManual, circleView, editManual, paidManual, removeManual, setCycleField, setPersonField } from "@/lib/server/circle";
 import { refreshDiscordNames } from "@/lib/server/discord";
-import { getSnapshot, patreonConfigured, setTrackedTiers, startPatreonLoop, syncPatreon } from "@/lib/server/patreon";
-import { needsPatreonSync } from "@/lib/patreon";
+import { getSnapshot, getTrackedTiers, patreonConfigured, setTrackedTiers, startPatreonLoop, syncPatreon } from "@/lib/server/patreon";
+import { discordIdsToFetch, needsPatreonSync } from "@/lib/patreon";
 
 /** Discord-Namen zu den bei Patreon verbundenen Konten nachholen – höchstens ~8 s warten, der Rest läuft im Hintergrund weiter */
 async function refreshNames() {
-  const ids = ((await getSnapshot())?.members ?? []).map((m) => m.discordId).filter((id): id is string => !!id);
+  const snap = await getSnapshot();
+  if (!snap) return;
+  const ids = discordIdsToFetch(snap.members, await getTrackedTiers(snap));
   if (ids.length) await Promise.race([refreshDiscordNames(ids).catch(() => {}), new Promise((r) => setTimeout(r, 8_000))]);
 }
 

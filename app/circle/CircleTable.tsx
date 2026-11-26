@@ -135,7 +135,7 @@ export function CircleTable({ rows, now, narrow, actions }: { rows: CircleRow[];
     switch (c) {
       case "name":
         return (
-          <button type="button" className="text-left font-semibold leading-tight underline-offset-2 hover:underline" onClick={() => actions.onOpen(r)}>
+          <button type="button" className="break-all text-left font-semibold leading-tight underline-offset-2 hover:underline" onClick={() => actions.onOpen(r)}>
             {r.name}
             {r.source === "manual" && <span className="ml-1 text-[11px] font-normal text-muted">(von Hand)</span>}
           </button>
