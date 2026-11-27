@@ -12,7 +12,7 @@ import { roundTo, scaledSize } from "@/lib/builders/common";
 import { APPLY_EVENT, takePendingCharacter } from "@/lib/characterTools";
 import { api, ApiError, IMAGE_FORM_KEY, loadLocal, saveLocal } from "@/lib/client";
 import { ASPECTS, DEFAULT_NEGATIVE, KREA2_ASPECTS, KREA2_LORA_PRESETS, UPSCALE_FACTORS, defaultImageSettings } from "@/lib/defaults";
-import { KREA2_MULTIPLE, krea2LoraSum, krea2Problems } from "@/lib/krea2";
+import { KREA2_MULTIPLE, krea2LoraSum, krea2Problems, kreaUnetFallback } from "@/lib/krea2";
 import { type Character, findAvailable } from "@/lib/notes";
 import type { ImageGenerator, ImageSettings, JobRecord } from "@/lib/types";
 import { samplerOptions } from "@/lib/samplers";
@@ -197,6 +197,13 @@ export function ImageForm() {
   const o = options;
   const samplerOpts = samplerOptions(o?.samplers ?? []);
   const schedulerOpts = o?.schedulers ?? [];
+
+  // Altes Preset (z. B. Standard-Krea-2-Turbo) auf neuem Pod: fehlt das Modell, das Standard-Modell nehmen
+  const kreaSwap = isKrea && o ? kreaUnetFallback(s.unet, o.unets) : null;
+  useEffect(() => {
+    if (kreaSwap) set({ unet: kreaSwap });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kreaSwap]);
 
   const kreaIssues = isKrea && o
     ? [

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { defaultImageSettings } from "@/lib/defaults";
+import { KREA2_FILES, defaultImageSettings } from "@/lib/defaults";
 import { krea2LoraSum, krea2Problems, krea2StartupWarning } from "@/lib/krea2";
 
 const lists = {
-  unets: ["krea2_turbo_fp8_scaled.safetensors"],
+  // neuer Pod: pod/setup.sh lädt das Standard-Modell (LUSTIFY! v10)
+  unets: [KREA2_FILES.unet],
   clips: ["qwen3vl_4b_fp8_scaled.safetensors"],
   vaes: ["qwen_image_vae.safetensors"],
   clipTypes: ["stable_diffusion", "qwen_image", "krea2"],

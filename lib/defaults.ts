@@ -27,7 +27,8 @@ export const KREA2_LORA_PRESETS = [
 
 /** Standarddateien für Krea 2 (Vorauswahl in den Dropdowns) */
 export const KREA2_FILES = {
-  unet: "krea2_turbo_fp8_scaled.safetensors",
+  // LUSTIFY! v10 (Krea 2 Turbo fp8) – lädt pod/setup.sh statt des Standard-Turbo-Modells
+  unet: "lustify-v10-krea-turbo-fp8.safetensors",
   textEncoder: "qwen3vl_4b_fp8_scaled.safetensors",
   vae: "qwen_image_vae.safetensors",
 } as const;

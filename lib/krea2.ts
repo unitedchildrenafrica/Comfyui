@@ -1,5 +1,6 @@
 // Krea 2: Prüfungen vor dem Start (Client + Server, reine Funktionen).
 
+import { KREA2_FILES } from "./defaults";
 import type { ImageSettings } from "./types";
 
 /** Krea 2 rechnet in 16er-Schritten (Breite/Höhe und Hires-Zielgröße). */
@@ -47,4 +48,13 @@ export function krea2Problems(s: Pick<ImageSettings, "unet" | "textEncoder" | "v
 /** Summe der aktiven LoRA-Stärken über 1.5 → Artefakte wahrscheinlich */
 export function krea2LoraSum(loras: ImageSettings["loras"]): number {
   return loras.filter((l) => l.enabled && l.name).reduce((sum, l) => sum + l.strength, 0);
+}
+
+/**
+ * Altes Preset auf neuem Pod: Liegt das gespeicherte UNet nicht auf dem Pod, aber das Standard-Modell
+ * (KREA2_FILES.unet), das Standard-Modell nehmen. null = nichts ändern (vorhanden oder Liste unbekannt).
+ */
+export function kreaUnetFallback(unet: string, available: string[]): string | null {
+  if (!available.length || available.includes(unet)) return null;
+  return available.includes(KREA2_FILES.unet) ? KREA2_FILES.unet : null;
 }

@@ -33,7 +33,7 @@ Templates läuft lokal mit dem Text-Encoder – Kandidat für eine spätere Prom
 
 | Dropdown | Quelle | Vorauswahl |
 |---|---|---|
-| UNet | `UNETLoader.unet_name` | `krea2_turbo_fp8_scaled.safetensors` |
+| UNet | `UNETLoader.unet_name` | `lustify-v10-krea-turbo-fp8.safetensors` (LUSTIFY! v10, Civitai 3112728; seit 27.11.2026 statt `krea2_turbo_fp8_scaled`) |
 | Text-Encoder | `CLIPLoader.clip_name` (`type` = `krea2`) | `qwen3vl_4b_fp8_scaled.safetensors` |
 | VAE | `VAELoader.vae_name` | `qwen_image_vae.safetensors` |
 
@@ -123,7 +123,7 @@ Vor dem Start prüfen (klare Meldung statt Absturz):
 - **ComfyUI-Update auch bei `bilder`** (`git reset --hard origin/master` wie bei `video`).
   Frontend bleibt `1.53.6`. Danach WAI und Anima einmal gegen den Pod testen.
 - Krea-Dateien bei `bilder` laden (UNet, Text-Encoder, VAE ist schon da) + LoRAs
-  `krea2_nsfw_v2` (Version 3065362) und `krea2_turbo_nsfw` (Version 3081369) über `$CIVITAI_TOKEN`.
+  seit 27.11.2026 statt des Standard-Turbo-Modells LUSTIFY! v10 (Krea 2 Turbo fp8, Civitai-Version 3112728) über `$CIVITAI_TOKEN`; die Krea-NSFW-LoRAs `krea2_nsfw_v2` / `krea2_turbo_nsfw` lädt das Setup nicht mehr (per „Gespeicherte Links“ nachladbar).
 - Speicherbedarf für `bilder` erhöhen (Vorschlag: +20 GB, die drei Dateien sind zusammen ca. 17 GB).
 - `HF_TOKEN` bleibt **optional** bei `bilder`. Das Repo Comfy-Org/Krea-2 ist öffentlich (lädt ohne
   Token); ist er gesetzt, wird er mitgeschickt. Tokens gehören ins Pod-Template, **nie ins Repo**.

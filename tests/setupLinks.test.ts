@@ -38,3 +38,32 @@ describe("LoRA-Links aus dem Pod-Setup", () => {
     }
   });
 });
+
+describe("Krea 2 auf neuen Pods", () => {
+  it("lädt Lustify statt des Standard-Turbo-Modells und keine NSFW-LoRAs", () => {
+    expect(sh).toMatch(/civ "3112728\?fileId=2997637"\s+"\$M\/diffusion_models"\s+lustify-v10-krea-turbo-fp8\.safetensors/);
+    expect(sh).not.toMatch(/^\s*dl .*krea2_turbo_fp8_scaled/m);
+    expect(sh).not.toMatch(/^\s*civ .*krea2_nsfw_v2/m);
+    expect(sh).not.toMatch(/^\s*civ .*krea2_turbo_nsfw/m);
+    // Text-Encoder und VAE von Krea 2 bleiben
+    expect(sh).toMatch(/qwen3vl_4b_fp8_scaled\.safetensors/);
+  });
+
+  it("Lustify steht mit Link in der Merkliste (auf jedem Pod per Tipp nachladbar)", () => {
+    const l = BUILTIN_MODEL_LINKS.find((x) => x.filename === "lustify-v10-krea-turbo-fp8.safetensors");
+    expect(l).toMatchObject({ type: "unet", url: `${CV}/3112728?fileId=2997637` });
+  });
+});
+
+describe("Altes Krea-Preset auf neuem Pod", () => {
+  it("fehlt das gespeicherte UNet und Lustify ist da, wird Lustify genommen", async () => {
+    const { kreaUnetFallback } = await import("@/lib/krea2");
+    const avail = ["anima-base-v1.0.safetensors", "lustify-v10-krea-turbo-fp8.safetensors"];
+    expect(kreaUnetFallback("krea2_turbo_fp8_scaled.safetensors", avail)).toBe("lustify-v10-krea-turbo-fp8.safetensors");
+    // vorhanden → bleibt
+    expect(kreaUnetFallback("anima-base-v1.0.safetensors", avail)).toBeNull();
+    // Liste noch nicht geladen oder Lustify fehlt auch → nichts ändern
+    expect(kreaUnetFallback("krea2_turbo_fp8_scaled.safetensors", [])).toBeNull();
+    expect(kreaUnetFallback("krea2_turbo_fp8_scaled.safetensors", ["anima-base-v1.0.safetensors"])).toBeNull();
+  });
+});

@@ -16,7 +16,7 @@ const NODES = {
   VAELoader: { vae_name: combo(["sdxl_vae.safetensors", "qwen_image_vae.safetensors", "MiniMaxH3/minimax_h3_video_vae_fp16.safetensors", "MiniMaxH3/minimax_h3_audio_vae_fp32.safetensors"]) },
   UpscaleModelLoader: { model_name: combo(["4x_foolhardy_Remacri.pth", "4x-UltraSharp.pth"]) },
   KSampler: { sampler_name: combo(["euler", "euler_ancestral", "dpmpp_2m"]), scheduler: combo(["normal", "karras", "simple"]) },
-  UNETLoader: { unet_name: combo(["anima-base-v1.0.safetensors", "krea2_turbo_fp8_scaled.safetensors", "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"]) },
+  UNETLoader: { unet_name: combo(["anima-base-v1.0.safetensors", "krea2_turbo_fp8_scaled.safetensors", "lustify-v10-krea-turbo-fp8.safetensors", "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors"]) },
   CLIPLoader: {
     clip_name: combo(["qwen_3_06b_base.safetensors", "qwen3vl_4b_fp8_scaled.safetensors", "qwen3vl_32b_heretic_minimax_h3_nvfp4.safetensors"]),
     // MOCK_OLD_COMFY=1: ComfyUI ohne Krea-2-Unterstützung

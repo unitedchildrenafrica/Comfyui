@@ -224,7 +224,7 @@ describe("Krea 2 builder", () => {
     expect(wf["5"].inputs).toEqual({ conditioning: ["4", 0] });
     expect(wf["7"].inputs).toMatchObject({ seed: 7, steps: 8, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1, model: ["60", 0] });
     expect(wf["6"].inputs).toMatchObject({ width: 896, height: 1152, batch_size: 1 });
-    expect(wf["60"].inputs.unet_name).toBe("krea2_turbo_fp8_scaled.safetensors");
+    expect(wf["60"].inputs.unet_name).toBe("lustify-v10-krea-turbo-fp8.safetensors");
     expect(wf["61"].inputs).toMatchObject({ clip_name: "qwen3vl_4b_fp8_scaled.safetensors", type: "krea2" });
     expect(wf["62"].inputs.vae_name).toBe("qwen_image_vae.safetensors");
     expect(wf["15"].inputs.filename_prefix).toBe("krea2/bild_001");

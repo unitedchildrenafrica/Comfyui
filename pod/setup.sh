@@ -222,15 +222,15 @@ if want bilder; then
   mkdir -p "$(dirname "$WL")"
   for f in face_yolov8m.pt hand_yolov8s.pt; do grep -qx "$f" "$WL" 2>/dev/null || echo "$f" >> "$WL"; done
 
-  step "6e. Bilder: Krea 2 Turbo"
-  # Öffentliches Repo (Comfy-Org/Krea-2), VAE ist dieselbe wie bei Anima (oben schon geladen)
+  step "6e. Bilder: Krea 2 (LUSTIFY! v10 Turbo fp8)"
+  # Modell: LUSTIFY! v10 (Krea 2, Turbo, fp8, 12,2 GB) statt des Standard-Krea-2-Turbo – NSFW schon
+  # eingebaut, darum keine Krea-NSFW-LoRAs mehr. Text-Encoder aus dem öffentlichen Repo Comfy-Org/Krea-2,
+  # VAE ist dieselbe wie bei Anima (oben schon geladen).
   KR=https://huggingface.co/Comfy-Org/Krea-2/resolve/main
-  dl "$KR/diffusion_models/krea2_turbo_fp8_scaled.safetensors" "$M/diffusion_models" krea2_turbo_fp8_scaled.safetensors "${HFO[@]}"
+  civ "3112728?fileId=2997637" "$M/diffusion_models" lustify-v10-krea-turbo-fp8.safetensors
   dl "$KR/text_encoders/qwen3vl_4b_fp8_scaled.safetensors" "$M/text_encoders" qwen3vl_4b_fp8_scaled.safetensors "${HFO[@]}"
   [ -s "$M/vae/qwen_image_vae.safetensors" ] || dl "$KR/vae/qwen_image_vae.safetensors" "$M/vae" qwen_image_vae.safetensors "${HFO[@]}"
-  civ "3065362?type=Model" "$M/loras" krea2_nsfw_v2.safetensors
-  civ "3081369?type=Model" "$M/loras" krea2_turbo_nsfw.safetensors
-  # krea2_aio_nsfw.safetensors (HearmemanAI, Modell 2732306): noch keine Versions-ID – von Hand laden
+  # Krea-LoRAs (krea2_nsfw_v2, krea2_turbo_nsfw …) bei Bedarf unter „Modelle“ → „Gespeicherte Links“ laden
 fi
 
 if want video; then

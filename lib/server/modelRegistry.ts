@@ -30,6 +30,7 @@ const CIVITAI = "https://civitai.red/api/download/models";
  * Selbst gemerkte Links mit gleichem Dateinamen gehen vor.
  */
 export const BUILTIN_MODEL_LINKS: ModelLink[] = ([
+  { filename: "lustify-v10-krea-turbo-fp8.safetensors", type: "unet", url: `${CIVITAI}/3112728?fileId=2997637`, title: "LUSTIFY! v10 (Krea 2 Turbo fp8) – Standard auf neuen Pods", savedAt: 0 },
   { filename: "krea2_turbo_fp8_scaled.safetensors", type: "unet", url: `${HF_KREA}/diffusion_models/krea2_turbo_fp8_scaled.safetensors`, title: "Krea 2 Turbo (fp8)", savedAt: 0 },
   { filename: "qwen3vl_4b_fp8_scaled.safetensors", type: "text_encoder", url: `${HF_KREA}/text_encoders/qwen3vl_4b_fp8_scaled.safetensors`, title: "Krea 2 Text-Encoder (Qwen3-VL 4B)", savedAt: 0 },
   { filename: "qwen_image_vae.safetensors", type: "vae", url: `${HF_KREA}/vae/qwen_image_vae.safetensors`, title: "Qwen-Image-VAE (Krea 2, Anima)", savedAt: 0 },

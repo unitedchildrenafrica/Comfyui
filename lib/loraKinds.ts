@@ -26,7 +26,9 @@ export const SETUP_VIDEO_LORAS = [
 ];
 
 /** Krea-2-LoRAs aus pod/setup.sh (Abschnitt „Bilder: Krea 2“) */
-export const SETUP_KREA_LORAS = ["krea2_nsfw_v2.safetensors", "krea2_turbo_nsfw.safetensors"];
+// Krea-LoRAs lädt pod/setup.sh seit LUSTIFY! (NSFW eingebaut) nicht mehr. Erkannt werden Krea-LoRAs
+// trotzdem: Ordner krea2/ oder „krea“ im Namen (siehe classifyLora).
+export const SETUP_KREA_LORAS: string[] = [];
 
 const KREA_FOLDER = /^krea2?$/i;
 const KREA_NAME = /krea/i;
